@@ -20,7 +20,8 @@ name = "compare_c"
 harness = false
 
 [features]
-v32 = []
+xxh32 = [] # Enable xxh32 implementation
+const_xxh32 = [] # Enable const xxh32 implementation
 
 [dev-dependencies]
 xxhash-c-sys = "0.8.1"
