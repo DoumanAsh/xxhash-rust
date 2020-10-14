@@ -130,3 +130,28 @@ fn assert_const_xxh32() {
         assert_eq!(result, sys_result);
     }
 }
+
+#[cfg(feature = "const_xxh64")]
+#[test]
+fn assert_const_xxh64() {
+    use xxhash_c_sys as sys;
+    use xxhash_rust::const_xxh64::xxh64;
+
+    const SEED_1: u64 = 0;
+    const SEED_2: u64 = 1;
+
+    for input in DATA.iter().rev() {
+        println!("input(len={})='{}'", input.len(), input);
+        let sys_result = unsafe {
+            sys::XXH64(input.as_ptr() as _, input.len(), SEED_1)
+        };
+        let result = xxh64(input.as_bytes(), SEED_1);
+        assert_eq!(result, sys_result);
+
+        let sys_result = unsafe {
+            sys::XXH64(input.as_ptr() as _, input.len(), SEED_2)
+        };
+        let result = xxh64(input.as_bytes(), SEED_2);
+        assert_eq!(result, sys_result);
+    }
+}

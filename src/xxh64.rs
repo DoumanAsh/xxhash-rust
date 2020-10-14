@@ -4,36 +4,7 @@
 
 use core::{ptr, mem, slice};
 
-const CHUNK_SIZE: usize = 32;
-
-const PRIME_1: u64 = 0x9E3779B185EBCA87;
-const PRIME_2: u64 = 0xC2B2AE3D27D4EB4F;
-const PRIME_3: u64 = 0x165667B19E3779F9;
-const PRIME_4: u64 = 0x85EBCA77C2B2AE63;
-const PRIME_5: u64 = 0x27D4EB2F165667C5;
-
-#[inline]
-const fn round(acc: u64, input: u64) -> u64 {
-    acc.wrapping_add(input.wrapping_mul(PRIME_2))
-       .rotate_left(31)
-       .wrapping_mul(PRIME_1)
-}
-
-#[inline]
-const fn merge_round(mut acc: u64, val: u64) -> u64 {
-    acc ^= round(0, val);
-    acc.wrapping_mul(PRIME_1).wrapping_add(PRIME_4)
-}
-
-#[inline]
-const fn avalanche(mut input: u64) -> u64 {
-    input ^= input >> 33;
-    input = input.wrapping_mul(PRIME_2);
-    input ^= input >> 29;
-    input = input.wrapping_mul(PRIME_3);
-    input ^= input >> 32;
-    input
-}
+use crate::xxh64_common::*;
 
 #[inline(always)]
 fn read_32le_unaligned(data: *const u8) -> u32 {

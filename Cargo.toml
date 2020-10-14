@@ -25,6 +25,7 @@ xxh32 = [] # Enable xxh32 implementation
 const_xxh32 = [] # Enable const xxh32 implementation
 
 xxh64 = [] # Enable xxh64 implementation
+const_xxh64 = [] # Enable const xxh64 implementation
 
 [dev-dependencies]
 twox-hash = "1"

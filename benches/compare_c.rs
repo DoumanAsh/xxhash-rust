@@ -67,6 +67,11 @@ fn define(c: &mut Criterion) {
         hasher.digest();
     }, criterion::BatchSize::SmallInput));
 
+    #[cfg(feature = "const_xxh64")]
+    c.bench_function("const_xxh64 Rust", |b| b.iter_batched(|| &DATA, |data| for input in data {
+        xxhash_rust::const_xxh64::xxh64(input.as_bytes(), 0);
+    }, criterion::BatchSize::SmallInput));
+
     c.bench_function("twox-hash32 Rust", |b| b.iter_batched(|| &DATA, |data| for input in data {
         use core::hash::Hasher;
 
