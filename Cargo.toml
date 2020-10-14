@@ -24,5 +24,6 @@ xxh32 = [] # Enable xxh32 implementation
 const_xxh32 = [] # Enable const xxh32 implementation
 
 [dev-dependencies]
+twox-hash = "1"
 xxhash-c-sys = "0.8.1"
 criterion = "0.3"

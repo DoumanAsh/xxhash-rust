@@ -30,4 +30,4 @@ jobs:
         rustc --version
 
     - name: Test
-      run: cargo test --features v32
+      run: cargo test --features const_xxh32,xxh32

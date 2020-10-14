@@ -55,9 +55,29 @@ fn define(c: &mut Criterion) {
         hasher.finish();
     }, criterion::BatchSize::SmallInput));
 
+    c.bench_function("twox-hash32 Rust", |b| b.iter_batched(|| &DATA, |data| for input in data {
+        use core::hash::Hasher;
+
+        let mut hasher = twox_hash::XxHash32::with_seed(0);
+        hasher.write(input.as_bytes());
+        hasher.finish();
+    }, criterion::BatchSize::SmallInput));
+
     c.bench_function("xxh32 C", |b| b.iter_batched(|| &DATA, |data| for input in data {
         unsafe {
             xxhash_c_sys::XXH32(input.as_ptr() as _, input.len(), 0);
+        }
+    }, criterion::BatchSize::SmallInput));
+
+    c.bench_function("xxh32 C Stateful", |b| b.iter_batched(|| &DATA, |data| for input in data {
+        use xxhash_c_sys as sys;
+
+        let mut state = core::mem::MaybeUninit::<sys::XXH32_state_t>::uninit();
+
+        unsafe {
+            sys::XXH32_reset(state.as_mut_ptr(), 0);
+            sys::XXH32_update(state.as_mut_ptr(), input.as_ptr() as _, input.len());
+            sys::XXH32_digest(state.as_mut_ptr());
         }
     }, criterion::BatchSize::SmallInput));
 }

@@ -38,7 +38,7 @@ const DATA: [&str; 35] = [
 
 #[cfg(feature = "xxh32")]
 #[test]
-fn assert_v32() {
+fn assert_xxh32() {
     use xxhash_c_sys as sys;
     use xxhash_rust::xxh32::xxh32;
 
@@ -48,7 +48,7 @@ fn assert_v32() {
     let mut hasher_1 = xxhash_rust::xxh32::Xxh32::new(SEED_1);
     let mut hasher_2 = xxhash_rust::xxh32::Xxh32::new(SEED_2);
 
-    for input in DATA.iter() {
+    for input in DATA.iter().rev() {
         println!("input(len={})='{}'", input.len(), input);
         let sys_result = unsafe {
             sys::XXH32(input.as_ptr() as _, input.len(), SEED_1)
@@ -73,7 +73,7 @@ fn assert_v32() {
 
 #[cfg(feature = "const_xxh32")]
 #[test]
-fn assert_v32() {
+fn assert_const_xxh32() {
     use xxhash_c_sys as sys;
     use xxhash_rust::const_xxh32::xxh32;
 
