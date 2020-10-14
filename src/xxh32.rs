@@ -26,8 +26,6 @@ fn read_le_is_align(data: *const u8, is_aligned: bool) -> u32 {
 }
 
 fn finalize(mut input: u32, mut data: &[u8], is_aligned: bool) -> u32 {
-    data = &data[..data.len() & 15];
-
     while data.len() >= 4 {
         input = input.wrapping_add(
             read_le_is_align(data.as_ptr(), is_aligned).wrapping_mul(PRIME_3)
@@ -44,8 +42,8 @@ fn finalize(mut input: u32, mut data: &[u8], is_aligned: bool) -> u32 {
     avalanche(input)
 }
 
-#[inline]
-fn xxh32_align(mut input: &[u8], seed: u32, is_aligned: bool) -> u32 {
+///Returns hash for the provided input
+pub fn xxh32(mut input: &[u8], seed: u32) -> u32 {
     let mut result = input.len() as u32;
 
     if input.len() >= CHUNK_SIZE {
@@ -55,13 +53,13 @@ fn xxh32_align(mut input: &[u8], seed: u32, is_aligned: bool) -> u32 {
         let mut v4 = seed.wrapping_sub(PRIME_1);
 
         loop {
-            v1 = round(v1, read_le_is_align(input.as_ptr(), is_aligned));
+            v1 = round(v1, read_le_is_align(input.as_ptr(), false));
             input = &input[4..];
-            v2 = round(v2, read_le_is_align(input.as_ptr(), is_aligned));
+            v2 = round(v2, read_le_is_align(input.as_ptr(), false));
             input = &input[4..];
-            v3 = round(v3, read_le_is_align(input.as_ptr(), is_aligned));
+            v3 = round(v3, read_le_is_align(input.as_ptr(), false));
             input = &input[4..];
-            v4 = round(v4, read_le_is_align(input.as_ptr(), is_aligned));
+            v4 = round(v4, read_le_is_align(input.as_ptr(), false));
             input = &input[4..];
 
             if input.len() < CHUNK_SIZE {
@@ -82,15 +80,10 @@ fn xxh32_align(mut input: &[u8], seed: u32, is_aligned: bool) -> u32 {
         result = result.wrapping_add(seed.wrapping_add(PRIME_5));
     }
 
-    return finalize(result, input, is_aligned);
+    return finalize(result, input, false);
 }
 
-///Hashes provided input
-pub fn xxh32(input: &[u8], seed: u32) -> u32 {
-    xxh32_align(input, seed, false)
-}
-
-///32 bit hash stateful algorithm
+///XXH32 Streaming algorithm
 pub struct Xxh32 {
     total_len: u32,
     is_large_len: bool,
@@ -178,7 +171,7 @@ impl Xxh32 {
     }
 
     ///Finalize hashing.
-    pub fn finish(&self) -> u32 {
+    pub fn digest(&self) -> u32 {
         let mut result = self.total_len;
 
         if self.is_large_len {
@@ -211,7 +204,6 @@ impl Xxh32 {
         self.v2 = seed.wrapping_add(PRIME_2);
         self.v3 = seed;
         self.v4 = seed.wrapping_sub(PRIME_1);
-        self.mem = [0, 0, 0, 0];
         self.mem_size = 0;
     }
 }

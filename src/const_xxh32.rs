@@ -10,7 +10,7 @@ const fn read_u32(input: &[u8], cursor: usize) -> u32 {
 }
 
 const fn finalize(mut input: u32, data: &[u8], mut cursor: usize) -> u32 {
-    let mut len = (data.len() - cursor) & 15;
+    let mut len = data.len() - cursor;
 
     while len >= 4 {
         input = input.wrapping_add(

@@ -20,8 +20,11 @@ name = "compare_c"
 harness = false
 
 [features]
+# XXH32 makes sense only on 32bit platforms
 xxh32 = [] # Enable xxh32 implementation
 const_xxh32 = [] # Enable const xxh32 implementation
+
+xxh64 = [] # Enable xxh64 implementation
 
 [dev-dependencies]
 twox-hash = "1"

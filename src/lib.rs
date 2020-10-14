@@ -10,3 +10,6 @@ mod xxh32_common;
 pub mod xxh32;
 #[cfg(feature = "const_xxh32")]
 pub mod const_xxh32;
+
+#[cfg(feature = "xxh64")]
+pub mod xxh64;
