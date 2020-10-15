@@ -73,7 +73,7 @@ fn slice_offset_ptr(slice: &[u8], offset: usize) -> *const u8 {
     debug_assert!(slice.len() >= offset);
 
     unsafe {
-        slice.as_ptr().offset(offset as isize)
+        slice.as_ptr().add(offset)
     }
 }
 
@@ -295,7 +295,7 @@ fn xxh3_64_1to3(input: &[u8], seed: u64, secret: &[u8]) -> u64 {
     debug_assert!(input.len() >= 1 && input.len() <= 3);
     let combo = ((input[0] as u32) << 16)
                 | ((input[input.len() >> 1] as u32) << 24)
-                | ((input[input.len() - 1] as u32) << 0)
+                | (input[input.len() - 1] as u32)
                 | ((input.len() as u32) << 8);
 
 

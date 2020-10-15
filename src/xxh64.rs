@@ -140,7 +140,7 @@ impl Xxh64 {
 
         if (self.mem_size + input.len()) < CHUNK_SIZE {
             unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr(), (self.mem.as_mut_ptr() as *mut u8).offset(self.mem_size as isize), input.len())
+                ptr::copy_nonoverlapping(input.as_ptr(), (self.mem.as_mut_ptr() as *mut u8).add(self.mem_size), input.len())
             }
             self.mem_size += input.len();
             return
@@ -152,7 +152,7 @@ impl Xxh64 {
             let fill_len = CHUNK_SIZE - self.mem_size;
 
             unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr(), (self.mem.as_mut_ptr() as *mut u8).offset(self.mem_size as isize), fill_len)
+                ptr::copy_nonoverlapping(input.as_ptr(), (self.mem.as_mut_ptr() as *mut u8).add(self.mem_size), fill_len)
             }
 
             self.v1 = round(self.v1, self.mem[0].to_le());
