@@ -178,9 +178,12 @@ fn custom_default_secret(seed: u64) -> [u8; DEFAULT_SECRET_SIZE] {
     }
 }
 
-//Const version is only efficient when it is actually executed at runtime
+//Const version is only efficient when it is actually executed at compile time
 #[inline(always)]
-const fn const_custom_default_secret(seed: u64) -> [u8; DEFAULT_SECRET_SIZE] {
+///Generates secret derived from provided seed and default one.
+///
+///Efficient when executed at compile time as alternative to using version alogirthm with custom `seed`
+pub const fn const_custom_default_secret(seed: u64) -> [u8; DEFAULT_SECRET_SIZE] {
     if seed == 0 {
         return DEFAULT_SECRET;
     }
@@ -498,6 +501,10 @@ pub fn xxh3_64(input: &[u8]) -> u64 {
 
 #[inline]
 ///Returns 64bit hash for provided input using seed.
+///
+///Note: While overhead of deriving new secret from provided seed is low,
+///it would more efficient to generate secret at compile time using special function
+///`const_custom_default_secret`
 pub fn xxh3_64_with_seed(input: &[u8], seed: u64) -> u64 {
     xxh3_64_internal(input, seed, &DEFAULT_SECRET, xxh3_64_long_with_seed)
 }
