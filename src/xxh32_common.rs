@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use core::mem;
 
 pub const CHUNK_SIZE: usize = mem::size_of::<u32>() * 4;

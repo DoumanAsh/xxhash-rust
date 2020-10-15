@@ -49,7 +49,7 @@ const fn finalize(mut input: u64, data: &[u8], mut cursor: usize) -> u64 {
 }
 
 ///Returns hash for the provided input.
-pub fn xxh64(input: &[u8], seed: u64) -> u64 {
+pub const fn xxh64(input: &[u8], seed: u64) -> u64 {
     let input_len = input.len() as u64;
     let mut cursor = 0;
     let mut result;

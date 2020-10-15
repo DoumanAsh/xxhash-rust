@@ -72,6 +72,12 @@ fn define(c: &mut Criterion) {
         xxhash_rust::const_xxh64::xxh64(input.as_bytes(), 0);
     }, criterion::BatchSize::SmallInput));
 
+
+    #[cfg(feature = "xxh3")]
+    c.bench_function("xxh3_64 Rust", |b| b.iter_batched(|| &DATA, |data| for input in data {
+        xxhash_rust::xxh3::xxh3_64(input.as_bytes());
+    }, criterion::BatchSize::SmallInput));
+
     c.bench_function("twox-hash32 Rust", |b| b.iter_batched(|| &DATA, |data| for input in data {
         use core::hash::Hasher;
 
@@ -122,6 +128,40 @@ fn define(c: &mut Criterion) {
             sys::XXH64_update(state.as_mut_ptr(), input.as_ptr() as _, input.len());
             sys::XXH64_digest(state.as_mut_ptr());
         }
+    }, criterion::BatchSize::SmallInput));
+
+    c.bench_function("xxh3_64 C", |b| b.iter_batched(|| &DATA, |data| for input in data {
+        unsafe {
+            xxhash_c_sys::XXH3_64bits(input.as_ptr() as _, input.len());
+        }
+    }, criterion::BatchSize::SmallInput));
+
+    let mut rand_230_bytes = [0u8; 260];
+    let _ = getrandom::getrandom(&mut rand_230_bytes);
+
+    c.bench_function("xxh3_64 C 230b", |b| b.iter_batched(|| rand_230_bytes, |input| {
+        unsafe {
+            xxhash_c_sys::XXH3_64bits(input.as_ptr() as _, input.len());
+        }
+    }, criterion::BatchSize::SmallInput));
+
+    #[cfg(feature = "xxh3")]
+    c.bench_function("xxh3_64 Rust 230b", |b| b.iter_batched(|| rand_230_bytes, |input| {
+        xxhash_rust::xxh3::xxh3_64(&input);
+    }, criterion::BatchSize::SmallInput));
+
+    let mut rand_260_bytes = [0u8; 260];
+    let _ = getrandom::getrandom(&mut rand_260_bytes);
+
+    c.bench_function("xxh3_64 C 260b", |b| b.iter_batched(|| rand_260_bytes, |input| {
+        unsafe {
+            xxhash_c_sys::XXH3_64bits(input.as_ptr() as _, input.len());
+        }
+    }, criterion::BatchSize::SmallInput));
+
+    #[cfg(feature = "xxh3")]
+    c.bench_function("xxh3_64 Rust 260b", |b| b.iter_batched(|| rand_260_bytes, |input| {
+        xxhash_rust::xxh3::xxh3_64(&input);
     }, criterion::BatchSize::SmallInput));
 }
 

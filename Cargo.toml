@@ -27,7 +27,10 @@ const_xxh32 = [] # Enable const xxh32 implementation
 xxh64 = [] # Enable xxh64 implementation
 const_xxh64 = [] # Enable const xxh64 implementation
 
+xxh3 = [] # Enable xxh3 implementation (no const variant, use const_xxh64 instead)
+
 [dev-dependencies]
 twox-hash = "1"
 xxhash-c-sys = "0.8.1"
 criterion = "0.3"
+getrandom = "0"

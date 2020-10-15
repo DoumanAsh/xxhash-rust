@@ -1,7 +1,8 @@
+#![allow(unused)]
+
 use core::mem;
 
 pub const CHUNK_SIZE: usize = mem::size_of::<u64>() * 4;
-
 pub const PRIME_1: u64 = 0x9E3779B185EBCA87;
 pub const PRIME_2: u64 = 0xC2B2AE3D27D4EB4F;
 pub const PRIME_3: u64 = 0x165667B19E3779F9;

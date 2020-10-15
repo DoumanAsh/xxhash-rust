@@ -155,3 +155,69 @@ fn assert_const_xxh64() {
         assert_eq!(result, sys_result);
     }
 }
+
+#[cfg(feature = "xxh3")]
+#[test]
+fn assert_xxh3() {
+    use getrandom::getrandom;
+    use xxhash_c_sys as sys;
+    use xxhash_rust::xxh3::{xxh3_64, xxh3_64_with_seed};
+
+    for input in DATA.iter() {
+        println!("input(len={})='{}'", input.len(), input);
+        let sys_result = unsafe {
+            sys::XXH3_64bits(input.as_ptr() as _, input.len())
+        };
+        let result = xxh3_64(input.as_bytes());
+        assert_eq!(result, sys_result);
+
+
+        let sys_result = unsafe {
+            sys::XXH3_64bits_withSeed(input.as_ptr() as _, input.len(), 1)
+        };
+        let result = xxh3_64_with_seed(input.as_bytes(), 1);
+        assert_eq!(result, sys_result);
+    }
+
+    let mut rand_128_bytes = [0u8; 128];
+    let _ = getrandom(&mut rand_128_bytes);
+
+    let sys_result = unsafe {
+        sys::XXH3_64bits(rand_128_bytes.as_ptr() as _, rand_128_bytes.len())
+    };
+    let result = xxh3_64(&rand_128_bytes);
+    assert_eq!(result, sys_result);
+
+    let mut rand_129_bytes = [0u8; 129];
+    let _ = getrandom(&mut rand_129_bytes);
+
+    let sys_result = unsafe {
+        sys::XXH3_64bits(rand_129_bytes.as_ptr() as _, rand_129_bytes.len())
+    };
+    let result = xxh3_64(&rand_129_bytes);
+    assert_eq!(result, sys_result);
+
+    let mut rand_240_bytes = [0u8; 240];
+    let _ = getrandom(&mut rand_240_bytes);
+
+    let sys_result = unsafe {
+        sys::XXH3_64bits(rand_240_bytes.as_ptr() as _, rand_240_bytes.len())
+    };
+    let result = xxh3_64(&rand_240_bytes);
+    assert_eq!(result, sys_result);
+
+    let mut rand_260_bytes = [0u8; 260];
+    let _ = getrandom(&mut rand_260_bytes);
+
+    let sys_result = unsafe {
+        sys::XXH3_64bits(rand_260_bytes.as_ptr() as _, rand_260_bytes.len())
+    };
+    let result = xxh3_64(&rand_260_bytes);
+    assert_eq!(result, sys_result);
+
+    let sys_result = unsafe {
+        sys::XXH3_64bits_withSeed(rand_260_bytes.as_ptr() as _, rand_260_bytes.len(), 1)
+    };
+    let result = xxh3_64_with_seed(&rand_260_bytes, 1);
+    assert_eq!(result, sys_result);
+}
