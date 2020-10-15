@@ -20,7 +20,6 @@ const SECRET_LASTACC_START: usize = 7;  //not aligned on 8, last secret is diffe
 const MID_SIZE_MAX: usize = 240;
 const SECRET_SIZE_MIN: usize = 136;
 const DEFAULT_SECRET_SIZE: usize = 192;
-const DEFAULT_SECRET_LIMIT: usize = DEFAULT_SECRET_SIZE / STRIPE_LEN;
 const DEFAULT_SECRET: [u8; DEFAULT_SECRET_SIZE] = [
     0xb8, 0xfe, 0x6c, 0x39, 0x23, 0xa4, 0x4b, 0xbe, 0x7c, 0x01, 0x81, 0x2c, 0xf7, 0x21, 0xad, 0x1c,
     0xde, 0xd4, 0x6d, 0xe9, 0x83, 0x90, 0x97, 0xdb, 0x72, 0x40, 0xa4, 0xa4, 0xb7, 0xb3, 0x67, 0x1f,
@@ -573,7 +572,7 @@ impl Xxh3 {
     #[inline(always)]
     //We limit hashing variant to secrets with default size.
     const fn stripes_per_block() -> usize {
-        DEFAULT_SECRET_LIMIT / SECRET_CONSUME_RATE
+        (DEFAULT_SECRET_SIZE - STRIPE_LEN) / SECRET_CONSUME_RATE
     }
 
     const fn internal_buffer_stripes() -> usize {
@@ -587,7 +586,7 @@ impl Xxh3 {
             let stripes_after_end = nb_stripes - stripes_to_end;
 
             accumulate_loop(acc, input, slice_offset_ptr(secret, nb_stripes_acc * SECRET_CONSUME_RATE), stripes_to_end);
-            scramble_acc(acc, slice_offset_ptr(secret, DEFAULT_SECRET_LIMIT));
+            scramble_acc(acc, slice_offset_ptr(secret, DEFAULT_SECRET_SIZE - STRIPE_LEN));
             accumulate_loop(acc, unsafe { input.add(stripes_to_end * STRIPE_LEN) }, secret.as_ptr(), stripes_after_end);
             stripes_to_end
         } else {
@@ -631,6 +630,10 @@ impl Xxh3 {
                     break;
                 }
             }
+
+            unsafe {
+                ptr::copy_nonoverlapping(input.as_ptr().offset(-(STRIPE_LEN as isize)), (self.buffer.0.as_mut_ptr() as *mut u8).add(self.buffer.0.len() - STRIPE_LEN), STRIPE_LEN)
+            }
         }
 
         unsafe {
@@ -645,17 +648,21 @@ impl Xxh3 {
             let nb_stripes = (self.buffered_size as usize - 1) / STRIPE_LEN;
             Self::consume_stripes(acc, nb_stripes, self.nb_stripes_acc, self.buffer.0.as_ptr(), &self.custom_secret.0);
 
-            accumulate_512(acc, slice_offset_ptr(&self.buffer.0, self.buffered_size as usize - STRIPE_LEN), self.custom_secret.0.as_ptr());
+            accumulate_512(acc,
+                           slice_offset_ptr(&self.buffer.0, self.buffered_size as usize - STRIPE_LEN),
+                           slice_offset_ptr(&self.custom_secret.0, self.custom_secret.0.len() - STRIPE_LEN - SECRET_LASTACC_START)
+            );
         } else {
             let mut last_stripe = mem::MaybeUninit::<[u8; STRIPE_LEN]>::uninit();
             let catchup_size = STRIPE_LEN - self.buffered_size as usize;
+            debug_assert!(self.buffered_size > 0);
 
             unsafe {
                 ptr::copy_nonoverlapping(slice_offset_ptr(&self.buffer.0, self.buffer.0.len() - catchup_size), last_stripe.as_mut_ptr() as _, catchup_size);
                 ptr::copy_nonoverlapping(self.buffer.0.as_ptr(), (last_stripe.as_mut_ptr() as *mut u8).add(catchup_size), self.buffered_size as usize);
             }
 
-            accumulate_512(acc, last_stripe.as_ptr() as _, slice_offset_ptr(&self.custom_secret.0, self.custom_secret.0.len() - SECRET_LASTACC_START));
+            accumulate_512(acc, last_stripe.as_ptr() as _, slice_offset_ptr(&self.custom_secret.0, self.custom_secret.0.len() - STRIPE_LEN - SECRET_LASTACC_START));
         }
     }
 

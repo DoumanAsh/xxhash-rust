@@ -214,7 +214,23 @@ fn assert_xxh3() {
     };
     let result = xxh3_64(&rand_240_bytes);
     assert_eq!(result, sys_result);
+    hasher_1.update(&rand_240_bytes);
+    assert_eq!(hasher_1.digest(), sys_result);
+    hasher_1.reset();
 
+    let mut rand_241_bytes = [0u8; 241];
+    let _ = getrandom(&mut rand_241_bytes);
+
+    let sys_result = unsafe {
+        sys::XXH3_64bits(rand_241_bytes.as_ptr() as _, rand_241_bytes.len())
+    };
+    let result = xxh3_64(&rand_241_bytes);
+    assert_eq!(result, sys_result);
+    hasher_1.update(&rand_241_bytes);
+    assert_eq!(hasher_1.digest(), sys_result);
+    hasher_1.reset();
+
+    println!("260b");
     let mut rand_260_bytes = [0u8; 260];
     let _ = getrandom(&mut rand_260_bytes);
 
@@ -223,10 +239,28 @@ fn assert_xxh3() {
     };
     let result = xxh3_64(&rand_260_bytes);
     assert_eq!(result, sys_result);
+    hasher_1.update(&rand_260_bytes);
+    assert_eq!(hasher_1.digest(), sys_result);
+    hasher_1.reset();
 
     let sys_result = unsafe {
         sys::XXH3_64bits_withSeed(rand_260_bytes.as_ptr() as _, rand_260_bytes.len(), 1)
     };
     let result = xxh3_64_with_seed(&rand_260_bytes, 1);
+    assert_eq!(result, sys_result);
+
+    let mut rand_500_bytes = [0u8; 500];
+    let _ = getrandom(&mut rand_500_bytes);
+
+    let sys_result = unsafe {
+        sys::XXH3_64bits(rand_500_bytes.as_ptr() as _, rand_500_bytes.len())
+    };
+    let result = xxh3_64(&rand_500_bytes);
+    assert_eq!(result, sys_result);
+
+    let sys_result = unsafe {
+        sys::XXH3_64bits_withSeed(rand_500_bytes.as_ptr() as _, rand_500_bytes.len(), 1)
+    };
+    let result = xxh3_64_with_seed(&rand_500_bytes, 1);
     assert_eq!(result, sys_result);
 }
