@@ -161,22 +161,31 @@ fn assert_const_xxh64() {
 fn assert_xxh3() {
     use getrandom::getrandom;
     use xxhash_c_sys as sys;
-    use xxhash_rust::xxh3::{xxh3_64, xxh3_64_with_seed};
+    use xxhash_rust::xxh3::{xxh3_64, xxh3_64_with_seed, Xxh3};
 
-    for input in DATA.iter() {
+    let mut hasher_1 = Xxh3::new();
+    let mut hasher_2 = Xxh3::with_seed(1);
+
+    for input in DATA.iter().rev() {
         println!("input(len={})='{}'", input.len(), input);
         let sys_result = unsafe {
             sys::XXH3_64bits(input.as_ptr() as _, input.len())
         };
         let result = xxh3_64(input.as_bytes());
         assert_eq!(result, sys_result);
-
+        hasher_1.update(input.as_bytes());
+        assert_eq!(hasher_1.digest(), result);
 
         let sys_result = unsafe {
             sys::XXH3_64bits_withSeed(input.as_ptr() as _, input.len(), 1)
         };
         let result = xxh3_64_with_seed(input.as_bytes(), 1);
         assert_eq!(result, sys_result);
+        hasher_2.update(input.as_bytes());
+        assert_eq!(hasher_2.digest(), result);
+
+        hasher_1.reset();
+        hasher_2.reset();
     }
 
     let mut rand_128_bytes = [0u8; 128];

@@ -15,10 +15,12 @@ const SECRET_CONSUME_RATE: usize = 8;
 const ACC_NB: usize = STRIPE_LEN / mem::size_of::<u64>();
 
 const SECRET_MERGEACCS_START: usize = 11;
+const SECRET_LASTACC_START: usize = 7;  //not aligned on 8, last secret is different from acc & scrambler
 
 const MID_SIZE_MAX: usize = 240;
 const SECRET_SIZE_MIN: usize = 136;
 const DEFAULT_SECRET_SIZE: usize = 192;
+const DEFAULT_SECRET_LIMIT: usize = DEFAULT_SECRET_SIZE / STRIPE_LEN;
 const DEFAULT_SECRET: [u8; DEFAULT_SECRET_SIZE] = [
     0xb8, 0xfe, 0x6c, 0x39, 0x23, 0xa4, 0x4b, 0xbe, 0x7c, 0x01, 0x81, 0x2c, 0xf7, 0x21, 0xad, 0x1c,
     0xde, 0xd4, 0x6d, 0xe9, 0x83, 0x90, 0x97, 0xdb, 0x72, 0x40, 0xa4, 0xa4, 0xb7, 0xb3, 0x67, 0x1f,
@@ -36,9 +38,11 @@ const DEFAULT_SECRET: [u8; DEFAULT_SECRET_SIZE] = [
 
 #[cfg(target_feature = "sse2")]
 #[repr(align(16))]
+#[derive(Clone)]
 struct Acc([u64; ACC_NB]);
 #[cfg(not(all(target_feature = "sse2")))]
 #[repr(align(8))]
+#[derive(Clone)]
 struct Acc([u64; ACC_NB]);
 
 const INITIAL_ACC: Acc = Acc([
@@ -175,6 +179,57 @@ fn custom_default_secret(seed: u64) -> [u8; DEFAULT_SECRET_SIZE] {
     }
 }
 
+//Const version is only efficient when it is actually executed at runtime
+#[inline(always)]
+const fn const_custom_default_secret(seed: u64) -> [u8; DEFAULT_SECRET_SIZE] {
+    if seed == 0 {
+        return DEFAULT_SECRET;
+    }
+
+    #[inline(always)]
+    const fn read_u64(input: &[u8], cursor: usize) -> u64 {
+        input[cursor] as u64
+            | (input[cursor + 1] as u64) << 8
+            | (input[cursor + 2] as u64) << 16
+            | (input[cursor + 3] as u64) << 24
+            | (input[cursor + 4] as u64) << 32
+            | (input[cursor + 5] as u64) << 40
+            | (input[cursor + 6] as u64) << 48
+            | (input[cursor + 7] as u64) << 56
+    }
+
+    let mut idx = 0;
+    let mut result = [0; DEFAULT_SECRET_SIZE];
+    const NB_ROUNDS: usize = DEFAULT_SECRET_SIZE / 16;
+
+    while idx < NB_ROUNDS {
+        let lo = read_u64(&DEFAULT_SECRET, idx * 16).wrapping_add(seed).to_le_bytes();
+        let hi = read_u64(&DEFAULT_SECRET, idx * 16 + 8).wrapping_sub(seed).to_le_bytes();
+
+        result[idx * 16] = lo[0];
+        result[idx * 16 + 1] = lo[1];
+        result[idx * 16 + 2] = lo[2];
+        result[idx * 16 + 3] = lo[3];
+        result[idx * 16 + 4] = lo[4];
+        result[idx * 16 + 5] = lo[5];
+        result[idx * 16 + 6] = lo[6];
+        result[idx * 16 + 7] = lo[7];
+
+        result[idx * 16 + 8] = hi[0];
+        result[idx * 16 + 8 + 1] = hi[1];
+        result[idx * 16 + 8 + 2] = hi[2];
+        result[idx * 16 + 8 + 3] = hi[3];
+        result[idx * 16 + 8 + 4] = hi[4];
+        result[idx * 16 + 8 + 5] = hi[5];
+        result[idx * 16 + 8 + 6] = hi[6];
+        result[idx * 16 + 8 + 7] = hi[7];
+
+        idx += 1;
+    }
+
+    result
+}
+
 //TODO: Should we add AVX?
 //      SSE is safe cuz it is available everywhere, but avx should probably be optional
 fn accumulate_512(acc: &mut Acc, input: *const u8, secret: *const u8) {
@@ -268,8 +323,6 @@ fn accumulate_loop(acc: &mut Acc, input: *const u8, secret: *const u8, nb_stripe
 
 #[inline]
 fn hash_long_internal_loop(acc: &mut Acc, input: &[u8], secret: &[u8]) {
-    const SECRET_LASTACC_START: usize = 7;  //not aligned on 8, last secret is different from acc & scrambler
-
     let nb_stripes = (secret.len() - STRIPE_LEN) / SECRET_CONSUME_RATE;
     let block_len = STRIPE_LEN * nb_stripes;
     let nb_blocks = (input.len() - 1) / block_len;
@@ -421,16 +474,21 @@ fn xxh3_64_long_impl(input: &[u8], secret: &[u8]) -> u64 {
 
 #[inline(never)]
 fn xxh3_64_long_with_seed(input: &[u8], seed: u64, _secret: &[u8]) -> u64 {
-    if seed == 0 {
-        xxh3_64_long_impl(input, &DEFAULT_SECRET)
-    } else {
-        xxh3_64_long_impl(input, &custom_default_secret(seed))
+    match seed {
+        0 => xxh3_64_long_impl(input, &DEFAULT_SECRET),
+        seed => xxh3_64_long_impl(input, &custom_default_secret(seed)),
     }
 }
 
 #[inline(never)]
 fn xxh3_64_long_default(input: &[u8], _seed: u64, _secret: &[u8]) -> u64 {
     xxh3_64_long_impl(input, &DEFAULT_SECRET)
+}
+
+
+#[inline(never)]
+fn xxh3_64_long_with_secret(input: &[u8], _seed: u64, secret: &[u8]) -> u64 {
+    xxh3_64_long_impl(input, secret)
 }
 
 #[inline]
@@ -443,4 +501,174 @@ pub fn xxh3_64(input: &[u8]) -> u64 {
 ///Returns 64bit hash for provided input using seed.
 pub fn xxh3_64_with_seed(input: &[u8], seed: u64) -> u64 {
     xxh3_64_internal(input, seed, &DEFAULT_SECRET, xxh3_64_long_with_seed)
+}
+
+#[inline]
+///Returns 64bit hash for provided input using custom secret.
+pub fn xxh3_64_with_secret(input: &[u8], secret: &[u8]) -> u64 {
+    xxh3_64_internal(input, 0, secret, xxh3_64_long_with_secret)
+}
+
+const INTERNAL_BUFFER_SIZE: usize = 256;
+
+#[derive(Clone)]
+#[repr(align(64))]
+struct Aligned64<T>(T);
+
+#[derive(Clone)]
+///XXH3 Streaming algorithm
+pub struct Xxh3 {
+    acc: Acc,
+    custom_secret: Aligned64<[u8; DEFAULT_SECRET_SIZE]>,
+    buffer: Aligned64<[u8; INTERNAL_BUFFER_SIZE]>,
+    buffered_size: u8,
+    nb_stripes_acc: usize,
+    total_len: u64,
+    seed: u64,
+}
+
+impl Xxh3 {
+    #[inline(always)]
+    ///Creates new hasher with default settings
+    pub const fn new() -> Self {
+        Self::with_custom_ops(0, DEFAULT_SECRET)
+    }
+
+    #[inline]
+    ///Creates new hasher with all options.
+    const fn with_custom_ops(seed: u64, secret: [u8; DEFAULT_SECRET_SIZE]) -> Self {
+        Self {
+            acc: INITIAL_ACC,
+            custom_secret: Aligned64(secret),
+            buffer: Aligned64([0; INTERNAL_BUFFER_SIZE]),
+            buffered_size: 0,
+            nb_stripes_acc: 0,
+            total_len: 0,
+            seed,
+        }
+    }
+
+    #[inline(always)]
+    ///Creates new hasher with custom seed.
+    pub const fn with_secret(secret: [u8; DEFAULT_SECRET_SIZE]) -> Self {
+        Self::with_custom_ops(0, secret)
+    }
+
+    #[inline(always)]
+    ///Creates new hasher with custom seed.
+    pub const fn with_seed(seed: u64) -> Self {
+        Self::with_custom_ops(seed, const_custom_default_secret(seed))
+    }
+
+    #[inline(always)]
+    ///Resets state
+    pub fn reset(&mut self) {
+        self.acc = INITIAL_ACC;
+        self.total_len = 0;
+        self.buffered_size = 0;
+        self.nb_stripes_acc = 0;
+    }
+
+    #[inline(always)]
+    //We limit hashing variant to secrets with default size.
+    const fn stripes_per_block() -> usize {
+        DEFAULT_SECRET_LIMIT / SECRET_CONSUME_RATE
+    }
+
+    const fn internal_buffer_stripes() -> usize {
+        INTERNAL_BUFFER_SIZE / STRIPE_LEN
+    }
+
+    #[inline]
+    fn consume_stripes(acc: &mut Acc, nb_stripes: usize, nb_stripes_acc: usize, input: *const u8, secret: &[u8; DEFAULT_SECRET_SIZE]) -> usize {
+        if (Self::stripes_per_block() - nb_stripes_acc) < nb_stripes {
+            let stripes_to_end = Self::stripes_per_block() - nb_stripes_acc;
+            let stripes_after_end = nb_stripes - stripes_to_end;
+
+            accumulate_loop(acc, input, slice_offset_ptr(secret, nb_stripes_acc * SECRET_CONSUME_RATE), stripes_to_end);
+            scramble_acc(acc, slice_offset_ptr(secret, DEFAULT_SECRET_LIMIT));
+            accumulate_loop(acc, unsafe { input.add(stripes_to_end * STRIPE_LEN) }, secret.as_ptr(), stripes_after_end);
+            stripes_to_end
+        } else {
+            accumulate_loop(acc, input, slice_offset_ptr(secret, nb_stripes_acc * SECRET_CONSUME_RATE), nb_stripes);
+            nb_stripes_acc.wrapping_add(nb_stripes)
+        }
+    }
+
+    ///Hashes provided chunk
+    pub fn update(&mut self, mut input: &[u8]) {
+        self.total_len = self.total_len.wrapping_add(input.len() as u64);
+
+        if (input.len() + self.buffered_size as usize) <= INTERNAL_BUFFER_SIZE {
+            unsafe {
+                ptr::copy_nonoverlapping(input.as_ptr(), (self.buffer.0.as_mut_ptr() as *mut u8).offset(self.buffered_size as isize), input.len())
+            }
+            self.buffered_size += input.len() as u8;
+            return;
+        }
+
+        if self.buffered_size > 0 {
+            let fill_len = INTERNAL_BUFFER_SIZE - self.buffered_size as usize;
+
+            unsafe {
+                ptr::copy_nonoverlapping(input.as_ptr(), (self.buffer.0.as_mut_ptr() as *mut u8).offset(self.buffered_size as isize), fill_len)
+            }
+
+            self.nb_stripes_acc = Self::consume_stripes(&mut self.acc, Self::internal_buffer_stripes(), self.nb_stripes_acc, self.buffer.0.as_ptr(), &self.custom_secret.0);
+
+            input = &input[fill_len..];
+            self.buffered_size = 0;
+
+        }
+
+        if input.len() > INTERNAL_BUFFER_SIZE {
+            loop {
+                self.nb_stripes_acc = Self::consume_stripes(&mut self.acc, Self::internal_buffer_stripes(), self.nb_stripes_acc, input.as_ptr(), &self.custom_secret.0);
+                input = &input[INTERNAL_BUFFER_SIZE..];
+
+                if input.len() < INTERNAL_BUFFER_SIZE {
+                    break;
+                }
+            }
+        }
+
+        unsafe {
+            ptr::copy_nonoverlapping(input.as_ptr(), self.buffer.0.as_mut_ptr() as *mut u8, input.len())
+        }
+        self.buffered_size += input.len() as u8;
+    }
+
+    #[inline]
+    fn digest_internal(&self, acc: &mut Acc) {
+        if self.buffered_size as usize >= STRIPE_LEN {
+            let nb_stripes = (self.buffered_size as usize - 1) / STRIPE_LEN;
+            Self::consume_stripes(acc, nb_stripes, self.nb_stripes_acc, self.buffer.0.as_ptr(), &self.custom_secret.0);
+
+            accumulate_512(acc, slice_offset_ptr(&self.buffer.0, self.buffered_size as usize - STRIPE_LEN), self.custom_secret.0.as_ptr());
+        } else {
+            let mut last_stripe = mem::MaybeUninit::<[u8; STRIPE_LEN]>::uninit();
+            let catchup_size = STRIPE_LEN - self.buffered_size as usize;
+
+            unsafe {
+                ptr::copy_nonoverlapping(slice_offset_ptr(&self.buffer.0, self.buffer.0.len() - catchup_size), last_stripe.as_mut_ptr() as _, catchup_size);
+                ptr::copy_nonoverlapping(self.buffer.0.as_ptr(), (last_stripe.as_mut_ptr() as *mut u8).add(catchup_size), self.buffered_size as usize);
+            }
+
+            accumulate_512(acc, last_stripe.as_ptr() as _, slice_offset_ptr(&self.custom_secret.0, self.custom_secret.0.len() - SECRET_LASTACC_START));
+        }
+    }
+
+    ///Computes hash.
+    pub fn digest(&self) -> u64 {
+        if self.total_len > MID_SIZE_MAX as u64 {
+            let mut acc = self.acc.clone();
+            self.digest_internal(&mut acc);
+
+            merge_accs(&mut acc, slice_offset_ptr(&self.custom_secret.0, SECRET_MERGEACCS_START), self.total_len.wrapping_mul(xxh64::PRIME_1))
+        } else if self.seed > 0 {
+            xxh3_64_with_seed(&self.buffer.0[..self.buffered_size as usize], self.seed)
+        } else {
+            xxh3_64_with_secret(&self.buffer.0[..self.buffered_size as usize], &self.custom_secret.0)
+        }
+    }
 }
