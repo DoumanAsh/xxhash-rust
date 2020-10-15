@@ -72,7 +72,6 @@ fn define(c: &mut Criterion) {
         xxhash_rust::const_xxh64::xxh64(input.as_bytes(), 0);
     }, criterion::BatchSize::SmallInput));
 
-
     #[cfg(feature = "xxh3")]
     c.bench_function("xxh3_64 Rust", |b| b.iter_batched(|| &DATA, |data| for input in data {
         xxhash_rust::xxh3::xxh3_64(input.as_bytes());
@@ -178,9 +177,28 @@ fn define(c: &mut Criterion) {
         }
     }, criterion::BatchSize::SmallInput));
 
+    c.bench_function("xxh3_64 C Stateful 260b", |b| b.iter_batched(|| rand_260_bytes, |input| {
+        use xxhash_c_sys as sys;
+
+        let mut state = core::mem::MaybeUninit::<sys::XXH3_state_t>::uninit();
+
+        unsafe {
+            sys::XXH3_64bits_reset(state.as_mut_ptr());
+            sys::XXH3_64bits_update(state.as_mut_ptr(), input.as_ptr() as _, input.len());
+            sys::XXH3_64bits_digest(state.as_mut_ptr());
+        }
+    }, criterion::BatchSize::SmallInput));
+
     #[cfg(feature = "xxh3")]
     c.bench_function("xxh3_64 Rust 260b", |b| b.iter_batched(|| rand_260_bytes, |input| {
         xxhash_rust::xxh3::xxh3_64(&input);
+    }, criterion::BatchSize::SmallInput));
+
+    #[cfg(feature = "xxh3")]
+    c.bench_function("xxh3_64 Rust Stateful 260b", |b| b.iter_batched(|| rand_260_bytes, |input| {
+        let mut hasher = xxhash_rust::xxh3::Xxh3::new();
+        hasher.update(&input);
+        hasher.digest();
     }, criterion::BatchSize::SmallInput));
 }
 

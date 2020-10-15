@@ -1,6 +1,6 @@
 [package]
 name = "xxhash-rust"
-version = "0.8.0"
+version = "0.8.0-beta.1"
 authors = ["Douman <douman@gmx.se>"]
 edition = "2018"
 description = "Implementation of xxhash"
@@ -34,3 +34,6 @@ twox-hash = "1"
 xxhash-c-sys = "0.8.1"
 criterion = "0.3"
 getrandom = "0"
+
+[package.metadata.docs.rs]
+features = ["xxh32", "const_xxh32", "xxh64", "const_xxh64", "xxh3"]

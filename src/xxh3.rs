@@ -575,6 +575,7 @@ impl Xxh3 {
         (DEFAULT_SECRET_SIZE - STRIPE_LEN) / SECRET_CONSUME_RATE
     }
 
+    #[inline(always)]
     const fn internal_buffer_stripes() -> usize {
         INTERNAL_BUFFER_SIZE / STRIPE_LEN
     }
@@ -618,7 +619,6 @@ impl Xxh3 {
 
             input = &input[fill_len..];
             self.buffered_size = 0;
-
         }
 
         if input.len() > INTERNAL_BUFFER_SIZE {
@@ -666,6 +666,7 @@ impl Xxh3 {
         }
     }
 
+    #[inline]
     ///Computes hash.
     pub fn digest(&self) -> u64 {
         if self.total_len > MID_SIZE_MAX as u64 {
