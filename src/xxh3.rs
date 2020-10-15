@@ -506,6 +506,7 @@ pub fn xxh3_64_with_seed(input: &[u8], seed: u64) -> u64 {
 #[inline]
 ///Returns 64bit hash for provided input using custom secret.
 pub fn xxh3_64_with_secret(input: &[u8], secret: &[u8]) -> u64 {
+    debug_assert!(secret.len() >= SECRET_SIZE_MIN);
     xxh3_64_internal(input, 0, secret, xxh3_64_long_with_secret)
 }
 
