@@ -688,3 +688,22 @@ impl Xxh3 {
         }
     }
 }
+
+impl Default for Xxh3 {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl core::hash::Hasher for Xxh3 {
+    #[inline(always)]
+    fn finish(&self) -> u64 {
+        self.digest()
+    }
+
+    #[inline(always)]
+    fn write(&mut self, input: &[u8]) {
+        self.update(input)
+    }
+}
