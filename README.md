@@ -17,3 +17,4 @@ Each algorithm is implemented via feature, allowing precise control over code si
 - `xxh64` - Enables 64 algorithm. Suitable for x86_64 targets
 - `const_xxh64` - `const fn` version of `xxh64` algorithm
 - `xxh3` - Enables `xxh3` family of algorithms, superior to `xxh32` and `xxh64` in terms of performance.
+- `const_xxh3` - `const fn` version of `xxh3` algorithm
