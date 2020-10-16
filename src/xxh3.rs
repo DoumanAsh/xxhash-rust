@@ -98,7 +98,7 @@ fn read_64le_unaligned(data: *const u8) -> u64 {
     }
 }
 
-#[inline]
+#[inline(always)]
 const fn xorshift64(value: u64, shift: u64) -> u64 {
     value ^ (value >> shift)
 }
@@ -182,7 +182,7 @@ fn custom_default_secret(seed: u64) -> [u8; DEFAULT_SECRET_SIZE] {
 #[inline(always)]
 ///Generates secret derived from provided seed and default secret.
 ///
-///Efficient when executed at compile time as alternative to using version alogirthm with custom `seed`
+///Efficient when executed at compile time as alternative to using version of algorithm with custom `seed`
 pub const fn const_custom_default_secret(seed: u64) -> [u8; DEFAULT_SECRET_SIZE] {
     if seed == 0 {
         return DEFAULT_SECRET;
@@ -429,7 +429,7 @@ fn xxh3_64_7to128(input: &[u8], seed: u64, secret: &[u8]) -> u64 {
     avalanche(acc)
 }
 
-#[inline(always)]
+#[inline(never)]
 fn xxh3_64_129to240(input: &[u8], seed: u64, secret: &[u8]) -> u64 {
     const START_OFFSET: usize = 3;
     const LAST_OFFSET: usize = 17;
@@ -576,21 +576,12 @@ impl Xxh3 {
         self.nb_stripes_acc = 0;
     }
 
-    #[inline(always)]
-    //We limit hashing variant to secrets with default size.
-    const fn stripes_per_block() -> usize {
-        (DEFAULT_SECRET_SIZE - STRIPE_LEN) / SECRET_CONSUME_RATE
-    }
-
-    #[inline(always)]
-    const fn internal_buffer_stripes() -> usize {
-        INTERNAL_BUFFER_SIZE / STRIPE_LEN
-    }
-
     #[inline]
     fn consume_stripes(acc: &mut Acc, nb_stripes: usize, nb_stripes_acc: usize, input: *const u8, secret: &[u8; DEFAULT_SECRET_SIZE]) -> usize {
-        if (Self::stripes_per_block() - nb_stripes_acc) < nb_stripes {
-            let stripes_to_end = Self::stripes_per_block() - nb_stripes_acc;
+        const STRIPES_PER_BLOCK: usize = (DEFAULT_SECRET_SIZE - STRIPE_LEN) / SECRET_CONSUME_RATE;
+
+        if (STRIPES_PER_BLOCK - nb_stripes_acc) < nb_stripes {
+            let stripes_to_end = STRIPES_PER_BLOCK - nb_stripes_acc;
             let stripes_after_end = nb_stripes - stripes_to_end;
 
             accumulate_loop(acc, input, slice_offset_ptr(secret, nb_stripes_acc * SECRET_CONSUME_RATE), stripes_to_end);
@@ -605,6 +596,8 @@ impl Xxh3 {
 
     ///Hashes provided chunk
     pub fn update(&mut self, mut input: &[u8]) {
+        const INTERNAL_BUFFER_STRIPES: usize = INTERNAL_BUFFER_SIZE / STRIPE_LEN;
+
         self.total_len = self.total_len.wrapping_add(input.len() as u64);
 
         if (input.len() + self.buffered_size as usize) <= INTERNAL_BUFFER_SIZE {
@@ -622,7 +615,7 @@ impl Xxh3 {
                 ptr::copy_nonoverlapping(input.as_ptr(), (self.buffer.0.as_mut_ptr() as *mut u8).offset(self.buffered_size as isize), fill_len)
             }
 
-            self.nb_stripes_acc = Self::consume_stripes(&mut self.acc, Self::internal_buffer_stripes(), self.nb_stripes_acc, self.buffer.0.as_ptr(), &self.custom_secret.0);
+            self.nb_stripes_acc = Self::consume_stripes(&mut self.acc, INTERNAL_BUFFER_STRIPES, self.nb_stripes_acc, self.buffer.0.as_ptr(), &self.custom_secret.0);
 
             input = &input[fill_len..];
             self.buffered_size = 0;
@@ -630,7 +623,7 @@ impl Xxh3 {
 
         if input.len() > INTERNAL_BUFFER_SIZE {
             loop {
-                self.nb_stripes_acc = Self::consume_stripes(&mut self.acc, Self::internal_buffer_stripes(), self.nb_stripes_acc, input.as_ptr(), &self.custom_secret.0);
+                self.nb_stripes_acc = Self::consume_stripes(&mut self.acc, INTERNAL_BUFFER_STRIPES, self.nb_stripes_acc, input.as_ptr(), &self.custom_secret.0);
                 input = &input[INTERNAL_BUFFER_SIZE..];
 
                 if input.len() < INTERNAL_BUFFER_SIZE {
