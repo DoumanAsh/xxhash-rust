@@ -180,7 +180,7 @@ fn custom_default_secret(seed: u64) -> [u8; DEFAULT_SECRET_SIZE] {
 
 //Const version is only efficient when it is actually executed at compile time
 #[inline(always)]
-///Generates secret derived from provided seed and default one.
+///Generates secret derived from provided seed and default secret.
 ///
 ///Efficient when executed at compile time as alternative to using version alogirthm with custom `seed`
 pub const fn const_custom_default_secret(seed: u64) -> [u8; DEFAULT_SECRET_SIZE] {
@@ -474,7 +474,6 @@ fn xxh3_64_long_impl(input: &[u8], secret: &[u8]) -> u64 {
     merge_accs(&mut acc, slice_offset_ptr(secret, SECRET_MERGEACCS_START), (input.len() as u64).wrapping_mul(xxh64::PRIME_1))
 }
 
-#[inline(never)]
 fn xxh3_64_long_with_seed(input: &[u8], seed: u64, _secret: &[u8]) -> u64 {
     match seed {
         0 => xxh3_64_long_impl(input, &DEFAULT_SECRET),
@@ -482,13 +481,10 @@ fn xxh3_64_long_with_seed(input: &[u8], seed: u64, _secret: &[u8]) -> u64 {
     }
 }
 
-#[inline(never)]
 fn xxh3_64_long_default(input: &[u8], _seed: u64, _secret: &[u8]) -> u64 {
     xxh3_64_long_impl(input, &DEFAULT_SECRET)
 }
 
-
-#[inline(never)]
 fn xxh3_64_long_with_secret(input: &[u8], _seed: u64, secret: &[u8]) -> u64 {
     xxh3_64_long_impl(input, secret)
 }
@@ -524,6 +520,10 @@ struct Aligned64<T>(T);
 
 #[derive(Clone)]
 ///XXH3 Streaming algorithm
+///
+///Internal state uses rather large buffers, therefore it might be beneficial
+///to store hasher on heap rather than stack.
+///Implementation makes no attempts at that, leaving choice entirely to user.
 pub struct Xxh3 {
     acc: Acc,
     custom_secret: Aligned64<[u8; DEFAULT_SECRET_SIZE]>,
@@ -673,7 +673,6 @@ impl Xxh3 {
         }
     }
 
-    #[inline]
     ///Computes hash.
     pub fn digest(&self) -> u64 {
         if self.total_len > MID_SIZE_MAX as u64 {
@@ -682,9 +681,11 @@ impl Xxh3 {
 
             merge_accs(&mut acc, slice_offset_ptr(&self.custom_secret.0, SECRET_MERGEACCS_START), self.total_len.wrapping_mul(xxh64::PRIME_1))
         } else if self.seed > 0 {
-            xxh3_64_with_seed(&self.buffer.0[..self.buffered_size as usize], self.seed)
+            //Technically we should not need to use it.
+            //But in all actuality original xxh3 implementation uses default secret for input with size less or equal to MID_SIZE_MAX
+            xxh3_64_internal(&self.buffer.0[..self.buffered_size as usize], self.seed, &DEFAULT_SECRET, xxh3_64_long_with_seed)
         } else {
-            xxh3_64_with_secret(&self.buffer.0[..self.buffered_size as usize], &self.custom_secret.0)
+            xxh3_64_internal(&self.buffer.0[..self.buffered_size as usize], self.seed, &self.custom_secret.0, xxh3_64_long_with_secret)
         }
     }
 }
