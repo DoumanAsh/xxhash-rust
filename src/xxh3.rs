@@ -7,7 +7,6 @@ use core::{ptr, mem};
 use crate::xxh32_common as xxh32;
 use crate::xxh64_common as xxh64;
 use crate::xxh3_common::*;
-pub use crate::xxh3_utils::*;
 
 // Code is as close to original C implementation as possible
 // It does make it look ugly, but it is fast and easy to update once xxhash gets new version.
@@ -390,7 +389,7 @@ pub fn xxh3_64(input: &[u8]) -> u64 {
 ///
 ///Note: While overhead of deriving new secret from provided seed is low,
 ///it would more efficient to generate secret at compile time using special function
-///`const_custom_default_secret`
+///`const_custom_default_secret` from `const_xxh3`
 pub fn xxh3_64_with_seed(input: &[u8], seed: u64) -> u64 {
     xxh3_64_internal(input, seed, &DEFAULT_SECRET, xxh3_64_long_with_seed)
 }
@@ -453,8 +452,8 @@ impl Xxh3 {
 
     #[inline(always)]
     ///Creates new hasher with custom seed.
-    pub const fn with_seed(seed: u64) -> Self {
-        Self::with_custom_ops(seed, const_custom_default_secret(seed))
+    pub fn with_seed(seed: u64) -> Self {
+        Self::with_custom_ops(seed, custom_default_secret(seed))
     }
 
     #[inline(always)]

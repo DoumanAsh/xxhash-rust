@@ -32,8 +32,6 @@ pub mod xxh64;
 pub mod const_xxh64;
 
 #[cfg(any(feature = "xxh3", feature = "const_xxh3"))]
-pub mod xxh3_utils;
-#[cfg(any(feature = "xxh3", feature = "const_xxh3"))]
 mod xxh3_common;
 #[cfg(feature = "xxh3")]
 pub mod xxh3;
