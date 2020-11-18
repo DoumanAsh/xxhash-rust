@@ -619,7 +619,6 @@ fn xxh3_128_long_impl(input: &[u8], secret: &[u8]) -> u128 {
                         !(input.len() as u64).wrapping_mul(xxh64::PRIME_2));
 
     lo as u128 | (hi as u128) << 64
-
 }
 
 #[inline(always)]
