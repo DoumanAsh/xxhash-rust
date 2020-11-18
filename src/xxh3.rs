@@ -688,7 +688,7 @@ fn xxh3_128_1to3(input: &[u8], seed: u64, secret: &[u8]) -> u128 {
     let c1 = input[0];
     let c2 = input[input.len() >> 1];
     let c3 = input[input.len() - 1];
-    let input_lo = (c1 as u32) << 16 | (c2 as u32) << 24 | (c3 as u32) << 0 | (input.len() as u32) << 8;
+    let input_lo = (c1 as u32) << 16 | (c2 as u32) << 24 | c3 as u32 | (input.len() as u32) << 8;
     let input_hi = input_lo.swap_bytes().rotate_left(13);
 
     let flip_lo = (read_32le_unaligned(slice_offset_ptr(secret, 0)) as u64 ^ read_32le_unaligned(slice_offset_ptr(secret, 4)) as u64).wrapping_add(seed);
