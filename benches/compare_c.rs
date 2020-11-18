@@ -137,6 +137,11 @@ fn define(c: &mut Criterion) {
         hasher.digest();
     }, criterion::BatchSize::SmallInput));
 
+    #[cfg(feature = "xxh3")]
+    c.bench_function("xxh3_128 Rust", |b| b.iter_batched(|| &DATA, |data| for input in data {
+        xxhash_rust::xxh3::xxh3_128(input.as_bytes());
+    }, criterion::BatchSize::SmallInput));
+
     #[cfg(feature = "const_xxh3")]
     c.bench_function("const_xxh3 Rust", |b| b.iter_batched(|| &DATA, |data| for input in data {
         xxhash_rust::const_xxh3::xxh3_64(input.as_bytes());
@@ -160,6 +165,12 @@ fn define(c: &mut Criterion) {
         }
     }, criterion::BatchSize::SmallInput));
 
+    c.bench_function("xxh3_128 C", |b| b.iter_batched(|| &DATA, |data| for input in data {
+        unsafe {
+            xxhash_c_sys::XXH3_128bits(input.as_ptr() as _, input.len());
+        }
+    }, criterion::BatchSize::SmallInput));
+
     let mut rand_230_bytes = [0u8; 260];
     let _ = getrandom::getrandom(&mut rand_230_bytes);
 
@@ -172,6 +183,17 @@ fn define(c: &mut Criterion) {
     #[cfg(feature = "xxh3")]
     c.bench_function("xxh3_64 Rust 230b", |b| b.iter_batched(|| rand_230_bytes, |input| {
         xxhash_rust::xxh3::xxh3_64(&input);
+    }, criterion::BatchSize::SmallInput));
+
+    c.bench_function("xxh3_128 C 230b", |b| b.iter_batched(|| rand_230_bytes, |input| {
+        unsafe {
+            xxhash_c_sys::XXH3_128bits(input.as_ptr() as _, input.len());
+        }
+    }, criterion::BatchSize::SmallInput));
+
+    #[cfg(feature = "xxh3")]
+    c.bench_function("xxh3_128 Rust 230b", |b| b.iter_batched(|| rand_230_bytes, |input| {
+        xxhash_rust::xxh3::xxh3_128(&input);
     }, criterion::BatchSize::SmallInput));
 
     let mut rand_260_bytes = [0u8; 260];
@@ -195,6 +217,12 @@ fn define(c: &mut Criterion) {
         }
     }, criterion::BatchSize::SmallInput));
 
+    c.bench_function("xxh3_128 C 260b", |b| b.iter_batched(|| rand_260_bytes, |input| {
+        unsafe {
+            xxhash_c_sys::XXH3_128bits(input.as_ptr() as _, input.len());
+        }
+    }, criterion::BatchSize::SmallInput));
+
     #[cfg(feature = "xxh3")]
     c.bench_function("xxh3_64 Rust 260b", |b| b.iter_batched(|| rand_260_bytes, |input| {
         xxhash_rust::xxh3::xxh3_64(&input);
@@ -205,6 +233,11 @@ fn define(c: &mut Criterion) {
         let mut hasher = xxhash_rust::xxh3::Xxh3::new();
         hasher.update(&input);
         hasher.digest();
+    }, criterion::BatchSize::SmallInput));
+
+    #[cfg(feature = "xxh3")]
+    c.bench_function("xxh3_128 Rust 260b", |b| b.iter_batched(|| rand_260_bytes, |input| {
+        xxhash_rust::xxh3::xxh3_128(&input);
     }, criterion::BatchSize::SmallInput));
 }
 
