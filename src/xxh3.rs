@@ -1,6 +1,7 @@
 //!XXH3 implementation
 //!
-//!Provides only 64bit variant as most usable one.
+//!Provides `Hasher` only for 64bit as 128bit variant would not be much different due to trait
+//!being limited to `u64` outputs.
 
 use core::{ptr, mem};
 
