@@ -143,8 +143,13 @@ fn define(c: &mut Criterion) {
     }, criterion::BatchSize::SmallInput));
 
     #[cfg(feature = "const_xxh3")]
-    c.bench_function("const_xxh3 Rust", |b| b.iter_batched(|| &DATA, |data| for input in data {
+    c.bench_function("const_xxh3 64 Rust", |b| b.iter_batched(|| &DATA, |data| for input in data {
         xxhash_rust::const_xxh3::xxh3_64(input.as_bytes());
+    }, criterion::BatchSize::SmallInput));
+
+    #[cfg(feature = "const_xxh3")]
+    c.bench_function("const_xxh3 128 Rust", |b| b.iter_batched(|| &DATA, |data| for input in data {
+        xxhash_rust::const_xxh3::xxh3_128(input.as_bytes());
     }, criterion::BatchSize::SmallInput));
 
     c.bench_function("xxh3_64 C Stateful", |b| b.iter_batched(|| &DATA, |data| for input in data {
