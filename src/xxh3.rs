@@ -12,11 +12,15 @@ use crate::xxh3_common::*;
 // Code is as close to original C implementation as possible
 // It does make it look ugly, but it is fast and easy to update once xxhash gets new version.
 
-#[cfg(target_feature = "sse2")]
+#[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
 #[repr(align(16))]
 #[derive(Clone)]
 struct Acc([u64; ACC_NB]);
-#[cfg(not(all(target_feature = "sse2")))]
+#[cfg(target_feature = "avx2")]
+#[repr(align(32))]
+#[derive(Clone)]
+struct Acc([u64; ACC_NB]);
+#[cfg(not(any(target_feature = "avx2", target_feature = "sse2")))]
 #[repr(align(8))]
 #[derive(Clone)]
 struct Acc([u64; ACC_NB]);
@@ -29,7 +33,7 @@ const INITIAL_ACC: Acc = Acc([
 type LongHashFn = fn(&[u8], u64, &[u8]) -> u64;
 type LongHashFn128 = fn(&[u8], u64, &[u8]) -> u128;
 
-#[cfg(target_feature = "sse2")]
+#[cfg(any(target_feature = "sse2", target_feature = "avx2"))]
 #[inline]
 const fn _mm_shuffle(z: u32, y: u32, x: u32, w: u32) -> i32 {
     ((z << 6) | (y << 4) | (x << 2) | w) as i32
@@ -140,7 +144,7 @@ fn custom_default_secret(seed: u64) -> [u8; DEFAULT_SECRET_SIZE] {
 //TODO: Should we add AVX?
 //      SSE is safe cuz it is available everywhere, but avx should probably be optional
 fn accumulate_512(acc: &mut Acc, input: *const u8, secret: *const u8) {
-    #[cfg(target_feature = "sse2")]
+    #[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
     unsafe {
         #[cfg(target_arch = "x86")]
         use core::arch::x86::*;
@@ -165,7 +169,32 @@ fn accumulate_512(acc: &mut Acc, input: *const u8, secret: *const u8) {
         }
     }
 
-    #[cfg(not(all(target_feature = "sse2")))]
+    #[cfg(target_feature = "avx2")]
+    unsafe {
+        #[cfg(target_arch = "x86")]
+        use core::arch::x86::*;
+        #[cfg(target_arch = "x86_64")]
+        use core::arch::x86_64::*;
+
+        let xacc = acc.0.as_mut_ptr() as *mut __m256i;
+        let xinput = input as *const __m256i;
+        let xsecret = secret as *const __m256i;
+
+        for idx in 0..STRIPE_LEN / mem::size_of::<__m256i>() {
+            let data_vec = _mm256_loadu_si256(xinput.add(idx));
+            let key_vec = _mm256_loadu_si256(xsecret.add(idx));
+            let data_key = _mm256_xor_si256(data_vec, key_vec);
+
+            let data_key_lo = _mm256_shuffle_epi32(data_key, _mm_shuffle(0, 3, 0, 1));
+            let product = _mm256_mul_epu32(data_key, data_key_lo);
+
+            let data_swap = _mm256_shuffle_epi32(data_vec, _mm_shuffle(1,0,3,2));
+            let sum = _mm256_add_epi64(*xacc.add(idx), data_swap);
+            xacc.add(idx).write(_mm256_add_epi64(product, sum));
+        }
+    }
+
+    #[cfg(not(any(target_feature = "avx2", target_feature = "sse2")))]
     {
         for idx in 0..ACC_NB {
             let data_val = read_64le_unaligned(unsafe  { input.add(8 * idx) });
@@ -178,7 +207,7 @@ fn accumulate_512(acc: &mut Acc, input: *const u8, secret: *const u8) {
 }
 
 fn scramble_acc(acc: &mut Acc, secret: *const u8) {
-    #[cfg(target_feature = "sse2")]
+    #[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
     unsafe {
         #[cfg(target_arch = "x86")]
         use core::arch::x86::*;
@@ -204,7 +233,33 @@ fn scramble_acc(acc: &mut Acc, secret: *const u8) {
         }
     }
 
-    #[cfg(not(all(target_feature = "sse2")))]
+    #[cfg(target_feature = "avx2")]
+    unsafe {
+        #[cfg(target_arch = "x86")]
+        use core::arch::x86::*;
+        #[cfg(target_arch = "x86_64")]
+        use core::arch::x86_64::*;
+
+        let xacc = acc.0.as_mut_ptr() as *mut __m256i;
+        let xsecret = secret as *const __m256i;
+        let prime32 = _mm256_set1_epi32(xxh32::PRIME_1 as i32);
+
+        for idx in 0..STRIPE_LEN / mem::size_of::<__m256i>() {
+            let acc_vec = *xacc.add(idx);
+            let shifted = _mm256_srli_epi64(acc_vec, 47);
+            let data_vec = _mm256_xor_si256(acc_vec, shifted);
+
+            let key_vec = _mm256_loadu_si256(xsecret.add(idx));
+            let data_key = _mm256_xor_si256(data_vec, key_vec);
+
+            let data_key_hi = _mm256_shuffle_epi32(data_key, _mm_shuffle(0, 3, 0, 1));
+            let prod_lo = _mm256_mul_epu32(data_key, prime32);
+            let prod_hi = _mm256_mul_epu32(data_key_hi, prime32);
+            xacc.add(idx).write(_mm256_add_epi64(prod_lo, _mm256_slli_epi64(prod_hi, 32)));
+        }
+    }
+
+    #[cfg(not(any(target_feature = "avx2", target_feature = "sse2")))]
     {
         for idx in 0..ACC_NB {
             let key = read_64le_unaligned(unsafe { secret.add(8 * idx) });
