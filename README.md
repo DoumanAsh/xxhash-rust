@@ -18,3 +18,13 @@ Each algorithm is implemented via feature, allowing precise control over code si
 - `const_xxh64` - `const fn` version of `xxh64` algorithm
 - `xxh3` - Enables `xxh3` family of algorithms, superior to `xxh32` and `xxh64` in terms of performance.
 - `const_xxh3` - `const fn` version of `xxh3` algorithm
+
+## HW acceleration
+
+Similar to reference implementation, crate implements various SIMDs in `xxh3` depending on provided flags.
+All checks are performed only at compile time, hence user is encouraged to enable these accelerations (for example via `-C target_cpu=native`)
+
+Used SIMD acceleration:
+
+- SSE2 - widely available, can be safely enabled in 99% of cases. Enabled by default in `x86_64` targets.
+- AVX2;
