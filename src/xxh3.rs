@@ -890,6 +890,7 @@ pub fn xxh3_128_with_seed(input: &[u8], seed: u64) -> u128 {
 
 #[inline]
 ///Returns 128 hash for provided input using custom secret.
-pub fn xxh3_128_with_secret(input: &[u8]) -> u128 {
-    xxh3_128_internal(input, 0, &DEFAULT_SECRET, xxh3_128_long_with_secret)
+pub fn xxh3_128_with_secret(input: &[u8], secret: &[u8]) -> u128 {
+    debug_assert!(secret.len() >= SECRET_SIZE_MIN);
+    xxh3_128_internal(input, 0, secret, xxh3_128_long_with_secret)
 }
