@@ -28,3 +28,10 @@ Used SIMD acceleration:
 
 - SSE2 - widely available, can be safely enabled in 99% of cases. Enabled by default in `x86_64` targets.
 - AVX2;
+
+## Version note
+
+Crate `0.8.0` contains invalid API and hence new increment was required.
+As `0.8.0` is yanked, I consider it non-existing and hence `0.8.1` is the only version with stable API
+
+In order to  keep up with original implementation version I'm not planning to bump major/minor until C implementation does so.
