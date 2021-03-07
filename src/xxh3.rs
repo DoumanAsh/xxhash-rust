@@ -534,14 +534,14 @@ impl Xxh3 {
     fn consume_stripes(acc: &mut Acc, nb_stripes: usize, nb_stripes_acc: usize, input: *const u8, secret: &[u8; DEFAULT_SECRET_SIZE]) -> usize {
         const STRIPES_PER_BLOCK: usize = (DEFAULT_SECRET_SIZE - STRIPE_LEN) / SECRET_CONSUME_RATE;
 
-        if (STRIPES_PER_BLOCK - nb_stripes_acc) < nb_stripes {
+        if (STRIPES_PER_BLOCK - nb_stripes_acc) <= nb_stripes {
             let stripes_to_end = STRIPES_PER_BLOCK - nb_stripes_acc;
             let stripes_after_end = nb_stripes - stripes_to_end;
 
             accumulate_loop(acc, input, slice_offset_ptr(secret, nb_stripes_acc * SECRET_CONSUME_RATE), stripes_to_end);
             scramble_acc(acc, slice_offset_ptr(secret, DEFAULT_SECRET_SIZE - STRIPE_LEN));
             accumulate_loop(acc, unsafe { input.add(stripes_to_end * STRIPE_LEN) }, secret.as_ptr(), stripes_after_end);
-            stripes_to_end
+            stripes_after_end
         } else {
             accumulate_loop(acc, input, slice_offset_ptr(secret, nb_stripes_acc * SECRET_CONSUME_RATE), nb_stripes);
             nb_stripes_acc.wrapping_add(nb_stripes)
