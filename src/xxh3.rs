@@ -575,12 +575,13 @@ impl Xxh3 {
             self.buffered_size = 0;
         }
 
+        debug_assert_ne!(input.len(), 0);
         if input.len() > INTERNAL_BUFFER_SIZE {
             loop {
                 self.nb_stripes_acc = Self::consume_stripes(&mut self.acc, INTERNAL_BUFFER_STRIPES, self.nb_stripes_acc, input.as_ptr(), &self.custom_secret.0);
                 input = &input[INTERNAL_BUFFER_SIZE..];
 
-                if input.len() < INTERNAL_BUFFER_SIZE {
+                if input.len() <= INTERNAL_BUFFER_SIZE {
                     break;
                 }
             }
@@ -590,10 +591,12 @@ impl Xxh3 {
             }
         }
 
+        debug_assert_ne!(input.len(), 0);
+        debug_assert_eq!(self.buffered_size, 0);
         unsafe {
             ptr::copy_nonoverlapping(input.as_ptr(), self.buffer.0.as_mut_ptr() as *mut u8, input.len())
         }
-        self.buffered_size += input.len() as u16;
+        self.buffered_size = input.len() as u16;
     }
 
     #[inline]
