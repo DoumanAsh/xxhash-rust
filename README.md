@@ -31,7 +31,11 @@ Used SIMD acceleration:
 
 ## Version note
 
-Crate `0.8.0` contains invalid API and hence new increment was required.
-As `0.8.0` is yanked, I consider it non-existing and hence `0.8.1` is the only version with stable API
+- Crate `0.8.0` contains invalid API and hence new increment was required.
+
+- Crate `0.8.1` contains mistake in xxh3 algorithm, resulting in invalid input at input length equal to multiple of internal buffer + 1.
+In addition to that when total length reaches 1025 and more
+
+- As `0.8.0` and `0.8.1` are yanked, I consider it non-existing and hence `0.8.2` is the only version with stable API
 
 In order to  keep up with original implementation version I'm not planning to bump major/minor until C implementation does so.
