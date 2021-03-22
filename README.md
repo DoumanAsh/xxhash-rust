@@ -12,6 +12,8 @@ Each algorithm is implemented via feature, allowing precise control over code si
 
 ## Features:
 
+By default all features are off.
+
 - `xxh32` - Enables 32bit algorithm. Suitable for x86 targets
 - `const_xxh32` - `const fn` version of `xxh32` algorithm
 - `xxh64` - Enables 64 algorithm. Suitable for x86_64 targets
@@ -28,6 +30,11 @@ Used SIMD acceleration:
 
 - SSE2 - widely available, can be safely enabled in 99% of cases. Enabled by default in `x86_64` targets.
 - AVX2;
+
+## Streaming vs One-shot
+
+For performance reasons one-shot version of algorithm does not re-use streaming version.
+Unless needed, user is advised to use one-shot version which tends to be more optimal.
 
 ## Version note
 
