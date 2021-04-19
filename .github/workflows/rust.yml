@@ -30,4 +30,6 @@ jobs:
         rustc --version
 
     - name: Test
+      env:
+        QUICKCHECK_TESTS: 10000
       run: cargo test --features xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3
