@@ -36,6 +36,18 @@ Used SIMD acceleration:
 For performance reasons one-shot version of algorithm does not re-use streaming version.
 Unless needed, user is advised to use one-shot version which tends to be more optimal.
 
+## `cosnt fn` version
+
+While `const fn` provides compile time implementation, it does so at performance cost.
+Hence you should only use it at _compile_ time.
+
+To guarantee that something is computed at compile time make sure to initialize hash output
+as `const` or `static` variable, otherwise it is possible function is executed at runtime, which
+would be worse than regular algorithm.
+
+`const fn` is implemented in best possible way while conforming to limitations of Rust `const
+fn`, but these limitations are quite strict making any high performance code impossible.
+
 ## Version note
 
 - Crate `0.8.0` contains invalid API and hence new increment was required.
