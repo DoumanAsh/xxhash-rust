@@ -660,6 +660,52 @@ impl core::hash::Hasher for Xxh3 {
     }
 }
 
+///Hash builder for `Xxh3`
+pub struct Xxh3Builder {
+    seed: u64,
+    secret: [u8; DEFAULT_SECRET_SIZE],
+}
+
+impl Xxh3Builder {
+    #[inline(always)]
+    ///Creates new instance with default params.
+    pub const fn new() -> Self {
+        Self {
+            seed: 0,
+            secret: DEFAULT_SECRET,
+        }
+    }
+
+    #[inline(always)]
+    ///Sets `seed` for `xxh3` algorithm
+    pub const fn with_seed(mut self, seed: u64) -> Self {
+        self.seed = seed;
+        self
+    }
+
+    #[inline(always)]
+    ///Sets custom `secret` for `xxh3` algorithm
+    pub const fn with_secret(mut self, secret: [u8; DEFAULT_SECRET_SIZE]) -> Self {
+        self.secret = secret;
+        self
+    }
+
+    #[inline(always)]
+    ///Creates `Xxh3` instance
+    pub const fn build(&self) -> Xxh3 {
+        Xxh3::with_custom_ops(self.seed, self.secret)
+    }
+}
+
+impl core::hash::BuildHasher for Xxh3Builder {
+    type Hasher = Xxh3;
+
+    #[inline(always)]
+    fn build_hasher(&self) -> Self::Hasher {
+        self.build()
+    }
+}
+
 //
 //128bit
 //
