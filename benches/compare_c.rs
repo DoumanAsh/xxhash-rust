@@ -72,6 +72,7 @@ fn define(c: &mut Criterion) {
         xxhash_rust::const_xxh64::xxh64(input.as_bytes(), 0);
     }, criterion::BatchSize::SmallInput));
 
+    #[cfg(any(feature = "xxh32", feature = "const_xxh32"))]
     c.bench_function("twox-hash32 Rust", |b| b.iter_batched(|| &DATA, |data| for input in data {
         use core::hash::Hasher;
 
@@ -80,6 +81,7 @@ fn define(c: &mut Criterion) {
         hasher.finish();
     }, criterion::BatchSize::SmallInput));
 
+    #[cfg(any(feature = "xxh64", feature = "const_xxh64"))]
     c.bench_function("twox-hash64 Rust", |b| b.iter_batched(|| &DATA, |data| for input in data {
         use core::hash::Hasher;
 
@@ -88,12 +90,14 @@ fn define(c: &mut Criterion) {
         hasher.finish();
     }, criterion::BatchSize::SmallInput));
 
+    #[cfg(any(feature = "xxh32", feature = "const_xxh32"))]
     c.bench_function("xxh32 C", |b| b.iter_batched(|| &DATA, |data| for input in data {
         unsafe {
             xxhash_c_sys::XXH32(input.as_ptr() as _, input.len(), 0);
         }
     }, criterion::BatchSize::SmallInput));
 
+    #[cfg(any(feature = "xxh32", feature = "const_xxh32"))]
     c.bench_function("xxh32 C Stateful", |b| b.iter_batched(|| &DATA, |data| for input in data {
         use xxhash_c_sys as sys;
 
@@ -106,12 +110,14 @@ fn define(c: &mut Criterion) {
         }
     }, criterion::BatchSize::SmallInput));
 
+    #[cfg(any(feature = "xxh64", feature = "const_xxh64"))]
     c.bench_function("xxh64 C", |b| b.iter_batched(|| &DATA, |data| for input in data {
         unsafe {
             xxhash_c_sys::XXH64(input.as_ptr() as _, input.len(), 0);
         }
     }, criterion::BatchSize::SmallInput));
 
+    #[cfg(any(feature = "xxh64", feature = "const_xxh64"))]
     c.bench_function("xxh64 C Stateful", |b| b.iter_batched(|| &DATA, |data| for input in data {
         use xxhash_c_sys as sys;
 
@@ -152,6 +158,7 @@ fn define(c: &mut Criterion) {
         xxhash_rust::const_xxh3::xxh3_128(input.as_bytes());
     }, criterion::BatchSize::SmallInput));
 
+    #[cfg(any(feature = "xxh3", feature = "const_xxh3"))]
     c.bench_function("xxh3_64 C Stateful", |b| b.iter_batched(|| &DATA, |data| for input in data {
         use xxhash_c_sys as sys;
 
@@ -164,12 +171,14 @@ fn define(c: &mut Criterion) {
         }
     }, criterion::BatchSize::SmallInput));
 
+    #[cfg(any(feature = "xxh3", feature = "const_xxh3"))]
     c.bench_function("xxh3_64 C", |b| b.iter_batched(|| &DATA, |data| for input in data {
         unsafe {
             xxhash_c_sys::XXH3_64bits(input.as_ptr() as _, input.len());
         }
     }, criterion::BatchSize::SmallInput));
 
+    #[cfg(any(feature = "xxh3", feature = "const_xxh3"))]
     c.bench_function("xxh3_128 C", |b| b.iter_batched(|| &DATA, |data| for input in data {
         unsafe {
             xxhash_c_sys::XXH3_128bits(input.as_ptr() as _, input.len());
@@ -179,6 +188,7 @@ fn define(c: &mut Criterion) {
     let mut rand_230_bytes = [0u8; 260];
     let _ = getrandom::getrandom(&mut rand_230_bytes);
 
+    #[cfg(any(feature = "xxh3", feature = "const_xxh3"))]
     c.bench_function("xxh3_64 C 230b", |b| b.iter_batched(|| rand_230_bytes, |input| {
         unsafe {
             xxhash_c_sys::XXH3_64bits(input.as_ptr() as _, input.len());
@@ -190,6 +200,7 @@ fn define(c: &mut Criterion) {
         xxhash_rust::xxh3::xxh3_64(&input);
     }, criterion::BatchSize::SmallInput));
 
+    #[cfg(any(feature = "xxh3", feature = "const_xxh3"))]
     c.bench_function("xxh3_128 C 230b", |b| b.iter_batched(|| rand_230_bytes, |input| {
         unsafe {
             xxhash_c_sys::XXH3_128bits(input.as_ptr() as _, input.len());
@@ -204,12 +215,14 @@ fn define(c: &mut Criterion) {
     let mut rand_260_bytes = [0u8; 260];
     let _ = getrandom::getrandom(&mut rand_260_bytes);
 
+    #[cfg(any(feature = "xxh3", feature = "const_xxh3"))]
     c.bench_function("xxh3_64 C 260b", |b| b.iter_batched(|| rand_260_bytes, |input| {
         unsafe {
             xxhash_c_sys::XXH3_64bits(input.as_ptr() as _, input.len());
         }
     }, criterion::BatchSize::SmallInput));
 
+    #[cfg(any(feature = "xxh3", feature = "const_xxh3"))]
     c.bench_function("xxh3_64 C Stateful 260b", |b| b.iter_batched(|| rand_260_bytes, |input| {
         use xxhash_c_sys as sys;
 
@@ -222,6 +235,7 @@ fn define(c: &mut Criterion) {
         }
     }, criterion::BatchSize::SmallInput));
 
+    #[cfg(any(feature = "xxh3", feature = "const_xxh3"))]
     c.bench_function("xxh3_128 C 260b", |b| b.iter_batched(|| rand_260_bytes, |input| {
         unsafe {
             xxhash_c_sys::XXH3_128bits(input.as_ptr() as _, input.len());
