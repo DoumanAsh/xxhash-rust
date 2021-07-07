@@ -242,3 +242,41 @@ impl core::hash::Hasher for Xxh64 {
         self.update(input)
     }
 }
+
+impl Default for Xxh64 {
+    #[inline(always)]
+    fn default() -> Self {
+        Xxh64Builder::new(0).build()
+    }
+}
+
+#[derive(Clone, Copy)]
+///Hash builder for `Xxh64`
+pub struct Xxh64Builder {
+    seed: u64
+}
+
+impl Xxh64Builder {
+    #[inline(always)]
+    ///Creates builder with provided `seed`
+    pub const fn new(seed: u64) -> Self {
+        Self {
+            seed
+        }
+    }
+
+    #[inline(always)]
+    ///Creates hasher.
+    pub const fn build(self) -> Xxh64 {
+        Xxh64::new(self.seed)
+    }
+}
+
+impl core::hash::BuildHasher for Xxh64Builder {
+    type Hasher = Xxh64;
+
+    #[inline(always)]
+    fn build_hasher(&self) -> Self::Hasher {
+        self.build()
+    }
+}

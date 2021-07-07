@@ -660,6 +660,7 @@ impl core::hash::Hasher for Xxh3 {
     }
 }
 
+#[derive(Clone, Copy)]
 ///Hash builder for `Xxh3`
 pub struct Xxh3Builder {
     seed: u64,
@@ -692,7 +693,7 @@ impl Xxh3Builder {
 
     #[inline(always)]
     ///Creates `Xxh3` instance
-    pub const fn build(&self) -> Xxh3 {
+    pub const fn build(self) -> Xxh3 {
         Xxh3::with_custom_ops(self.seed, self.secret)
     }
 }
