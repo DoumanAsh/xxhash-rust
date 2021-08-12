@@ -2,26 +2,33 @@
 //!
 //!Written using C implementation as reference.
 
-use core::{ptr, mem, slice};
+use core::{ptr, slice};
 
 use crate::xxh32_common::*;
 
 #[inline(always)]
 fn read_le_unaligned(data: *const u8) -> u32 {
-    let mut result = mem::MaybeUninit::<u32>::uninit();
+    debug_assert!(!data.is_null());
+
     unsafe {
-        ptr::copy_nonoverlapping(data, result.as_mut_ptr() as _, mem::size_of::<u32>());
-        result.assume_init().to_le()
+        ptr::read_unaligned(data as *const u32).to_le()
+    }
+}
+
+#[inline(always)]
+fn read_le_aligned(data: *const u8) -> u32 {
+    debug_assert!(!data.is_null());
+
+    unsafe {
+        ptr::read(data as *const u32).to_le()
     }
 }
 
 #[inline(always)]
 fn read_le_is_align(data: *const u8, is_aligned: bool) -> u32 {
     match is_aligned {
-        true => unsafe {
-            (*(data as *const u32)).to_le()
-        },
-        false => read_le_unaligned(data),
+        true => read_le_aligned(data),
+        false => read_le_unaligned(data)
     }
 }
 
@@ -53,13 +60,13 @@ pub fn xxh32(mut input: &[u8], seed: u32) -> u32 {
         let mut v4 = seed.wrapping_sub(PRIME_1);
 
         loop {
-            v1 = round(v1, read_le_is_align(input.as_ptr(), false));
+            v1 = round(v1, read_le_unaligned(input.as_ptr()));
             input = &input[4..];
-            v2 = round(v2, read_le_is_align(input.as_ptr(), false));
+            v2 = round(v2, read_le_unaligned(input.as_ptr()));
             input = &input[4..];
-            v3 = round(v3, read_le_is_align(input.as_ptr(), false));
+            v3 = round(v3, read_le_unaligned(input.as_ptr()));
             input = &input[4..];
-            v4 = round(v4, read_le_is_align(input.as_ptr(), false));
+            v4 = round(v4, read_le_unaligned(input.as_ptr()));
             input = &input[4..];
 
             if input.len() < CHUNK_SIZE {
