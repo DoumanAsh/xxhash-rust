@@ -1,11 +1,19 @@
 name: Rust
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - '**'
 
 jobs:
   build:
 
     runs-on: ${{ matrix.os }}
+    if: github.event.pull_request.draft == false
 
     strategy:
       matrix:
@@ -15,7 +23,6 @@ jobs:
     - uses: actions/checkout@v1
 
     - name: Install Rust Unix
-      if: runner.os != 'Windows'
       run: |
         if rustup --version >/dev/null 2>&1; then
             rustup update
@@ -24,12 +31,29 @@ jobs:
              echo ::add-path::$HOME/.cargo/bin
         fi
 
+    - name: Rust Cache
+      uses: Swatinem/rust-cache@v1
+
+    - name: Install Valgrind
+      run: |
+        sudo apt-get install -y valgrind
+
     - name: Rust version
       run: |
         cargo --version
         rustc --version
 
+    - name: Check build
+      run: cargo check --features xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3
+
     - name: Test
       env:
         QUICKCHECK_TESTS: 10000
       run: cargo test --features xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3
+
+    - name: Valgrind Test
+      env:
+        QUICKCHECK_TESTS: 10000
+        CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "valgrind --leak-check=full"
+      run: cargo test --release --features xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3
+
