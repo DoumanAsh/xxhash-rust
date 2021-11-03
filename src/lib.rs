@@ -4,6 +4,25 @@
 //!
 //!Each algorithm is implemented via feature, allowing precise control over code size.
 //!
+//!## Example
+//!
+//!```rust
+//!use xxhash_rust::const_xxh3::xxh3_64 as const_xxh3;
+//!use xxhash_rust::xxh3::xxh3_64;
+//!
+//!const TEST: u64 = const_xxh3(b"TEST");
+//!
+//!fn test_input(text: &str) -> bool {
+//!    match xxh3_64(text.as_bytes()) {
+//!        TEST => true,
+//!        _ => false
+//!    }
+//!}
+//!
+//!assert!(!test_input("tEST"));
+//!assert!(test_input("TEST"));
+//!```
+//!
 //!## Features:
 //!
 //!By default all features are off.
