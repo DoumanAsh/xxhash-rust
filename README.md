@@ -77,3 +77,7 @@ In addition to that when total length reaches 1025 and more
 - As `0.8.0` and `0.8.1` are yanked, I consider it non-existing and hence `0.8.2` is the only version with stable API
 
 In order to  keep up with original implementation version I'm not planning to bump major/minor until C implementation does so.
+
+## Comparison with twox-hash
+
+Refer to my [comment](https://github.com/DoumanAsh/xxhash-rust/issues/10#issuecomment-980488647)
