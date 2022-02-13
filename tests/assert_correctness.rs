@@ -188,6 +188,9 @@ fn assert_xxh3() {
     let mut hasher_1 = Xxh3::new();
     let mut hasher_2 = Xxh3::with_seed(1);
 
+    let mut hasher_1_128 = Xxh3::new();
+    let mut hasher_2_128 = Xxh3::with_seed(1);
+
     let mut input = Vec::with_capacity(2048);
     for num in 0..2048 {
         input.resize(num, 1);
@@ -201,6 +204,7 @@ fn assert_xxh3() {
         let result = xxh3_64(input);
         assert_eq!(result, sys_result);
         hasher_1.update(input);
+        hasher_1_128.update(input);
         assert_eq!(hasher_1.digest(), result);
 
         let sys_result128 = unsafe {
@@ -209,6 +213,7 @@ fn assert_xxh3() {
         let result128 = xxh3_128(input);
         assert_eq!(result128 as u64, sys_result128.low64);
         assert_eq!((result128 >> 64) as u64, sys_result128.high64);
+        assert_eq!(hasher_1_128.digest128(), result128);
 
         let sys_result = unsafe {
             sys::XXH3_64bits_withSeed(input.as_ptr() as _, input.len(), 1)
@@ -216,6 +221,7 @@ fn assert_xxh3() {
         let result = xxh3_64_with_seed(input, 1);
         assert_eq!(result, sys_result);
         hasher_2.update(input);
+        hasher_2_128.update(input);
         assert_eq!(hasher_2.digest(), result);
 
         hasher_1.reset();
@@ -227,5 +233,9 @@ fn assert_xxh3() {
         let result128 = xxh3_128_with_seed(input, 1);
         assert_eq!(result128 as u64, sys_result128.low64);
         assert_eq!((result128 >> 64) as u64, sys_result128.high64);
+        assert_eq!(hasher_2_128.digest128(), result128);
+
+        hasher_1_128.reset();
+        hasher_2_128.reset();
     }
 }

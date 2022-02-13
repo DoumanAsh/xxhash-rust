@@ -639,6 +639,28 @@ impl Xxh3 {
             xxh3_64_internal(&self.buffer.0[..self.buffered_size as usize], self.seed, &self.custom_secret.0, xxh3_64_long_with_secret)
         }
     }
+
+    ///Computes hash as 128bit integer.
+    pub fn digest128(&self) -> u128 {
+        if self.total_len > MID_SIZE_MAX as u64 {
+            let mut acc = self.acc.clone();
+            self.digest_internal(&mut acc);
+
+            let low = merge_accs(&mut acc, slice_offset_ptr(&self.custom_secret.0, SECRET_MERGEACCS_START),
+                                 self.total_len.wrapping_mul(xxh64::PRIME_1));
+            let high = merge_accs(&mut acc,
+                                  slice_offset_ptr(&self.custom_secret.0,
+                                                   self.custom_secret.0.len() - mem::size_of_val(&self.acc) - SECRET_MERGEACCS_START),
+                                  !self.total_len.wrapping_mul(xxh64::PRIME_2));
+            ((high as u128) << 64) | (low as u128)
+        } else if self.seed > 0 {
+            //Technically we should not need to use it.
+            //But in all actuality original xxh3 implementation uses default secret for input with size less or equal to MID_SIZE_MAX
+            xxh3_128_internal(&self.buffer.0[..self.buffered_size as usize], self.seed, &DEFAULT_SECRET, xxh3_128_long_with_seed)
+        } else {
+            xxh3_128_internal(&self.buffer.0[..self.buffered_size as usize], self.seed, &self.custom_secret.0, xxh3_128_long_with_secret)
+        }
+    }
 }
 
 impl Default for Xxh3 {
