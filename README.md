@@ -6,8 +6,6 @@
 
 Implementation of [xxHash](https://github.com/Cyan4973/xxHash) in Rust
 
-Version corresponds to xxHash [releases](https://github.com/Cyan4973/xxHash/releases)
-
 Each algorithm is implemented via feature, allowing precise control over code size.
 
 ## Example
@@ -75,6 +73,8 @@ fn`, but these limitations are quite strict making any high performance code imp
 In addition to that when total length reaches 1025 and more
 
 - As `0.8.0` and `0.8.1` are yanked, I consider it non-existing and hence `0.8.2` is the only version with stable API
+
+- `0.8.2` corresponds to C's `0.8.1`
 
 In order to  keep up with original implementation version I'm not planning to bump major/minor until C implementation does so.
 
