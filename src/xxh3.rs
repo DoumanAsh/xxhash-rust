@@ -467,6 +467,7 @@ pub fn xxh3_64_with_secret(input: &[u8], secret: &[u8]) -> u64 {
 }
 
 const INTERNAL_BUFFER_SIZE: usize = 256;
+const STRIPES_PER_BLOCK: usize = (DEFAULT_SECRET_SIZE - STRIPE_LEN) / SECRET_CONSUME_RATE;
 
 #[derive(Clone)]
 #[repr(align(64))]
@@ -532,8 +533,6 @@ impl Xxh3 {
 
     #[inline]
     fn consume_stripes(acc: &mut Acc, nb_stripes: usize, nb_stripes_acc: usize, input: *const u8, secret: &[u8; DEFAULT_SECRET_SIZE]) -> usize {
-        const STRIPES_PER_BLOCK: usize = (DEFAULT_SECRET_SIZE - STRIPE_LEN) / SECRET_CONSUME_RATE;
-
         if (STRIPES_PER_BLOCK - nb_stripes_acc) <= nb_stripes {
             let stripes_to_end = STRIPES_PER_BLOCK - nb_stripes_acc;
             let stripes_after_end = nb_stripes - stripes_to_end;
@@ -576,7 +575,40 @@ impl Xxh3 {
         }
 
         debug_assert_ne!(input.len(), 0);
-        if input.len() > INTERNAL_BUFFER_SIZE {
+
+
+        //big input incoming
+        if input.len() > (STRIPES_PER_BLOCK * STRIPE_LEN) {
+            let mut nb_stripes = (input.len() - 1) / STRIPE_LEN;
+
+            debug_assert!(self.nb_stripes_acc <= STRIPES_PER_BLOCK);
+            {
+                let stripes_to_end = STRIPES_PER_BLOCK - self.nb_stripes_acc;
+
+                accumulate_loop(&mut self.acc, input.as_ptr(), slice_offset_ptr(&self.custom_secret.0, self.nb_stripes_acc * SECRET_CONSUME_RATE), stripes_to_end);
+                scramble_acc(&mut self.acc, slice_offset_ptr(&self.custom_secret.0, DEFAULT_SECRET_SIZE - STRIPE_LEN));
+                self.nb_stripes_acc = 0;
+
+                input = &input[stripes_to_end * STRIPE_LEN..];
+                nb_stripes -= stripes_to_end
+            }
+
+            while nb_stripes >= STRIPES_PER_BLOCK {
+                accumulate_loop(&mut self.acc, input.as_ptr(), self.custom_secret.0.as_ptr(), STRIPES_PER_BLOCK);
+                scramble_acc(&mut self.acc, slice_offset_ptr(&self.custom_secret.0, DEFAULT_SECRET_SIZE - STRIPE_LEN));
+                input = &input[STRIPES_PER_BLOCK * STRIPE_LEN..];
+                nb_stripes -= STRIPES_PER_BLOCK;
+            }
+
+            accumulate_loop(&mut self.acc, input.as_ptr(), self.custom_secret.0.as_ptr(), nb_stripes);
+            input = &input[nb_stripes * STRIPE_LEN..];
+            debug_assert_ne!(input.len(), 0);
+            self.nb_stripes_acc = nb_stripes;
+
+            unsafe {
+                ptr::copy_nonoverlapping(input.as_ptr().offset(-(STRIPE_LEN as isize)), (self.buffer.0.as_mut_ptr() as *mut u8).add(self.buffer.0.len() - STRIPE_LEN), STRIPE_LEN)
+            }
+        } else if input.len() > INTERNAL_BUFFER_SIZE {
             loop {
                 self.nb_stripes_acc = Self::consume_stripes(&mut self.acc, INTERNAL_BUFFER_STRIPES, self.nb_stripes_acc, input.as_ptr(), &self.custom_secret.0);
                 input = &input[INTERNAL_BUFFER_SIZE..];
