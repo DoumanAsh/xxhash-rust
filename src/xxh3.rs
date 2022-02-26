@@ -420,7 +420,7 @@ fn xxh3_64_internal(input: &[u8], seed: u64, secret: &[u8], long_hash_fn: LongHa
     }
 }
 
-#[inline]
+#[inline(always)]
 fn xxh3_64_long_impl(input: &[u8], secret: &[u8]) -> u64 {
     let mut acc = INITIAL_ACC;
 
@@ -429,6 +429,7 @@ fn xxh3_64_long_impl(input: &[u8], secret: &[u8]) -> u64 {
     merge_accs(&mut acc, slice_offset_ptr(secret, SECRET_MERGEACCS_START), (input.len() as u64).wrapping_mul(xxh64::PRIME_1))
 }
 
+#[inline(never)]
 fn xxh3_64_long_with_seed(input: &[u8], seed: u64, _secret: &[u8]) -> u64 {
     match seed {
         0 => xxh3_64_long_impl(input, &DEFAULT_SECRET),
@@ -436,10 +437,12 @@ fn xxh3_64_long_with_seed(input: &[u8], seed: u64, _secret: &[u8]) -> u64 {
     }
 }
 
+#[inline(never)]
 fn xxh3_64_long_default(input: &[u8], _seed: u64, _secret: &[u8]) -> u64 {
     xxh3_64_long_impl(input, &DEFAULT_SECRET)
 }
 
+#[inline(never)]
 fn xxh3_64_long_with_secret(input: &[u8], _seed: u64, secret: &[u8]) -> u64 {
     xxh3_64_long_impl(input, secret)
 }
@@ -547,6 +550,7 @@ impl Xxh3 {
         }
     }
 
+    #[inline]
     ///Hashes provided chunk
     pub fn update(&mut self, mut input: &[u8]) {
         const INTERNAL_BUFFER_STRIPES: usize = INTERNAL_BUFFER_SIZE / STRIPE_LEN;
