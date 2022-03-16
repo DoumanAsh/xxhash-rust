@@ -12,7 +12,8 @@ categories = ["algorithms"]
 include = [
     "**/*.rs",
     "Cargo.toml",
-    "README.md"
+    "README.md",
+    "LICENSE",
 ]
 
 [[bench]]
