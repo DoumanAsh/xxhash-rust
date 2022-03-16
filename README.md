@@ -69,7 +69,7 @@ fn`, but these limitations are quite strict making any high performance code imp
 
 - `0.8.2` corresponds to C's `0.8.0`
 
-- `0.8.3` corresponds to C's `0.8.1`
+- `0.8.3` and `0.8.4` corresponds to C's `0.8.1`
 
 In order to  keep up with original implementation version I'm not planning to bump major/minor until C implementation does so.
 
