@@ -36,6 +36,7 @@ jobs:
 
     - name: Install Valgrind
       run: |
+        sudo apt-get update
         sudo apt-get install -y valgrind
 
     - name: Rust version
