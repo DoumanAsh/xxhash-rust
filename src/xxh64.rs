@@ -130,7 +130,7 @@ pub struct Xxh64 {
     v3: u64,
     v4: u64,
     mem: [u64; 4],
-    mem_size: usize,
+    mem_size: u64,
 }
 
 impl Xxh64 {
@@ -152,21 +152,21 @@ impl Xxh64 {
     pub fn update(&mut self, mut input: &[u8]) {
         self.total_len = self.total_len.wrapping_add(input.len() as u64);
 
-        if (self.mem_size + input.len()) < CHUNK_SIZE {
+        if (self.mem_size as usize + input.len()) < CHUNK_SIZE {
             unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr(), (self.mem.as_mut_ptr() as *mut u8).add(self.mem_size), input.len())
+                ptr::copy_nonoverlapping(input.as_ptr(), (self.mem.as_mut_ptr() as *mut u8).add(self.mem_size as usize), input.len())
             }
-            self.mem_size += input.len();
+            self.mem_size += input.len() as u64;
             return
         }
 
         if self.mem_size > 0 {
             //previous if can fail only when we do not have enough space in buffer for input.
             //hence fill_len >= input.len()
-            let fill_len = CHUNK_SIZE - self.mem_size;
+            let fill_len = CHUNK_SIZE - self.mem_size as usize;
 
             unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr(), (self.mem.as_mut_ptr() as *mut u8).add(self.mem_size), fill_len)
+                ptr::copy_nonoverlapping(input.as_ptr(), (self.mem.as_mut_ptr() as *mut u8).add(self.mem_size as usize), fill_len)
             }
 
             self.v1 = round(self.v1, self.mem[0].to_le());
@@ -202,7 +202,7 @@ impl Xxh64 {
             unsafe {
                 ptr::copy_nonoverlapping(input.as_ptr(), self.mem.as_mut_ptr() as *mut u8, input.len())
             }
-            self.mem_size = input.len();
+            self.mem_size = input.len() as u64;
         }
     }
 
@@ -226,7 +226,7 @@ impl Xxh64 {
         result = result.wrapping_add(self.total_len);
 
         let input = unsafe {
-            slice::from_raw_parts(self.mem.as_ptr() as *const u8, self.mem_size)
+            slice::from_raw_parts(self.mem.as_ptr() as *const u8, self.mem_size as usize)
         };
 
         finalize(result, input, true)
