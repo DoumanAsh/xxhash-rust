@@ -1,6 +1,7 @@
 # xxhash-rust
 
 ![Rust](https://github.com/DoumanAsh/xxhash-rust/workflows/Rust/badge.svg?branch=master)
+[![Cross-Rust](https://github.com/DoumanAsh/xxhash-rust/actions/workflows/cross-rust.yml/badge.svg?branch=master)](https://github.com/DoumanAsh/xxhash-rust/actions/workflows/cross-rust.yml)
 [![Crates.io](https://img.shields.io/crates/v/xxhash-rust.svg)](https://crates.io/crates/xxhash-rust)
 [![Documentation](https://docs.rs/xxhash-rust/badge.svg)](https://docs.rs/crate/xxhash-rust/)
 
@@ -69,7 +70,7 @@ fn`, but these limitations are quite strict making any high performance code imp
 
 - `0.8.2` corresponds to C's `0.8.0`
 
-- `0.8.3` and `0.8.4` corresponds to C's `0.8.1`
+- `0.8.3`, `0.8.5` and `0.8.4` corresponds to C's `0.8.1`
 
 In order to  keep up with original implementation version I'm not planning to bump major/minor until C implementation does so.
 
