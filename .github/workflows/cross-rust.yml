@@ -1,0 +1,45 @@
+name: Cross-Rust
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/cross-rust.yml'
+      - 'src/**.rs'
+      - 'Cargo.toml'
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - '**'
+    paths:
+      - '.github/workflows/cross-rust.yml'
+      - 'src/**.rs'
+      - 'Cargo.toml'
+
+jobs:
+  cross-platform-test:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    strategy:
+      matrix:
+        target: ["arm-unknown-linux-musleabi", "i586-unknown-linux-musl"]
+
+    steps:
+    - uses: actions/checkout@v1
+
+    - name: Install Rust Unix
+      run: |
+        if rustup --version >/dev/null 2>&1; then
+            rustup update
+        else
+             curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain stable
+             echo ::add-path::$HOME/.cargo/bin
+        fi
+
+    - name: Install Cross
+      run: cargo install cross || true
+
+    - name: Test ${{ matrix.target }}
+      run: cross test --features xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3 --release --target ${{ matrix.target }}
