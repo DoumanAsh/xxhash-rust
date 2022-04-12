@@ -45,15 +45,15 @@ const fn mult32_to64(left: u32, right: u32) -> u64 {
 }
 
 #[inline(always)]
-fn _mm_prefetch(ptr: *const i8, offset: isize) {
+fn _mm_prefetch(_ptr: *const i8, _offset: isize) {
     #[cfg(target_arch = "x86")]
     unsafe {
-        core::arch::x86::_mm_prefetch(ptr.offset(offset), core::arch::x86::_MM_HINT_T0);
+        core::arch::x86::_mm_prefetch(_ptr.offset(_offset), core::arch::x86::_MM_HINT_T0);
     }
 
     #[cfg(target_arch = "x86_64")]
     unsafe {
-        core::arch::x86_64::_mm_prefetch(ptr.offset(offset), core::arch::x86_64::_MM_HINT_T0);
+        core::arch::x86_64::_mm_prefetch(_ptr.offset(_offset), core::arch::x86_64::_MM_HINT_T0);
     }
 }
 

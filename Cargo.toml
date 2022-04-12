@@ -16,10 +16,6 @@ include = [
     "LICENSE",
 ]
 
-[[bench]]
-name = "compare_c"
-harness = false
-
 [features]
 # XXH32 makes sense only on 32bit platforms
 xxh32 = [] # Enable xxh32 implementation
@@ -32,12 +28,8 @@ xxh3 = [] # Enable xxh3 implementation
 const_xxh3 = [] # Enable const xxh3 implementation
 
 [dev-dependencies]
-twox-hash = "1"
 xxhash-c-sys = "0.8.1"
-criterion = "0.3"
 getrandom = "0"
-quickcheck = "1"
-quickcheck_macros = "1"
 
 [package.metadata.docs.rs]
 features = ["xxh32", "const_xxh32", "xxh64", "const_xxh64", "xxh3", "const_xxh3"]
