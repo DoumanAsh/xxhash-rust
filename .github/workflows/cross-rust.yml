@@ -39,7 +39,9 @@ jobs:
         fi
 
     - name: Install Cross
-      run: cargo install cross || true
+      run: |
+        curl -L https://github.com/cross-rs/cross/releases/download/v0.2.1/cross-v0.2.1-x86_64-unknown-linux-musl.tar.gz | tar xf -
+        cp cross $HOME/.cargo/bin
 
     - name: Test ${{ matrix.target }}
       run: cross test --features xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3 --release --target ${{ matrix.target }}
