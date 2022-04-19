@@ -1,7 +1,7 @@
 # xxhash-rust
 
 ![Rust](https://github.com/DoumanAsh/xxhash-rust/workflows/Rust/badge.svg?branch=master)
-[![Cross-Rust](https://github.com/DoumanAsh/xxhash-rust/actions/workflows/cross-rust.yml/badge.svg?branch=master)](https://github.com/DoumanAsh/xxhash-rust/actions/workflows/cross-rust.yml)
+![Cross-Rust](https://github.com/DoumanAsh/xxhash-rust/workflows/Cross-Rust/badge.svg?branch=master)
 [![Crates.io](https://img.shields.io/crates/v/xxhash-rust.svg)](https://crates.io/crates/xxhash-rust)
 [![Documentation](https://docs.rs/xxhash-rust/badge.svg)](https://docs.rs/crate/xxhash-rust/)
 
