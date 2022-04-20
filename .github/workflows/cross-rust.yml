@@ -44,4 +44,4 @@ jobs:
         cp cross $HOME/.cargo/bin
 
     - name: Test ${{ matrix.target }}
-      run: cross test --features xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3 --release --target ${{ matrix.target }}
+      run: cross test --features xxh3 --target ${{ matrix.target }}
