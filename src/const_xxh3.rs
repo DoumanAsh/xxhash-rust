@@ -48,6 +48,7 @@ const fn mix16_b(input: &[u8], input_offset: usize, secret: &[u8], secret_offset
     mul128_fold64(input_lo, input_hi)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[inline]
 const fn mix32_b(mut acc: (u64, u64), input_1: &[u8], input_1_off: usize, input_2: &[u8], input_2_off: usize, secret: &[u8], secret_offset: usize, seed: u64) -> (u64, u64) {
     acc.0 = acc.0.wrapping_add(mix16_b(input_1, input_1_off, secret, secret_offset, seed));
