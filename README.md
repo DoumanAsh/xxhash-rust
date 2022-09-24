@@ -10,6 +10,16 @@ Each algorithm is implemented via feature, allowing precise control over code si
 
 ## Example
 
+- Cargo.toml
+
+```toml
+[dependencies.xxhash-rust]
+version = "0.8.5"
+features = ["xxh3", "const_xxh3"]
+```
+
+- main.rs
+
 ```rust
 use xxhash_rust::const_xxh3::xxh3_64 as const_xxh3;
 use xxhash_rust::xxh3::xxh3_64;
