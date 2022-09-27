@@ -765,6 +765,13 @@ impl core::hash::BuildHasher for Xxh3Builder {
     }
 }
 
+impl Default for Xxh3Builder {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 //
 //128bit
 //

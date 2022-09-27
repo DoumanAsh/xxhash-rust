@@ -263,7 +263,7 @@ impl Default for Xxh64 {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 ///Hash builder for `Xxh64`
 pub struct Xxh64Builder {
     seed: u64
