@@ -63,7 +63,7 @@ Used SIMD acceleration:
 For performance reasons one-shot version of algorithm does not re-use streaming version.
 Unless needed, user is advised to use one-shot version which tends to be more optimal.
 
-## `cosnt fn` version
+## `const fn` version
 
 While `const fn` provides compile time implementation, it does so at performance cost.
 Hence you should only use it at _compile_ time.
