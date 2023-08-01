@@ -141,10 +141,9 @@ fn custom_default_secret(seed: u64) -> [u8; DEFAULT_SECRET_SIZE] {
     }
 }
 
-//TODO: Should we add AVX?
-//      SSE is safe cuz it is available everywhere, but avx should probably be optional
-fn accumulate_512(acc: &mut Acc, input: *const u8, secret: *const u8) {
-    #[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
+#[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
+#[inline(always)]
+fn accumulate_512_sse2(acc: &mut Acc, input: *const u8, secret: *const u8) {
     unsafe {
         #[cfg(target_arch = "x86")]
         use core::arch::x86::*;
@@ -168,8 +167,11 @@ fn accumulate_512(acc: &mut Acc, input: *const u8, secret: *const u8) {
             xacc.add(idx).write(_mm_add_epi64(product, sum));
         }
     }
+}
 
-    #[cfg(target_feature = "avx2")]
+#[cfg(target_feature = "avx2")]
+#[inline(always)]
+fn accumulate_512_avx2(acc: &mut Acc, input: *const u8, secret: *const u8) {
     unsafe {
         #[cfg(target_arch = "x86")]
         use core::arch::x86::*;
@@ -193,21 +195,34 @@ fn accumulate_512(acc: &mut Acc, input: *const u8, secret: *const u8) {
             xacc.add(idx).write(_mm256_add_epi64(product, sum));
         }
     }
+}
 
-    #[cfg(not(any(target_feature = "avx2", target_feature = "sse2")))]
-    {
-        for idx in 0..ACC_NB {
-            let data_val = read_64le_unaligned(unsafe  { input.add(8 * idx) });
-            let data_key = data_val ^ read_64le_unaligned(unsafe { secret.add(8 * idx) });
+#[cfg(not(any(target_feature = "avx2", target_feature = "sse2")))]
+#[inline(always)]
+fn accumulate_512_scalar(acc: &mut Acc, input: *const u8, secret: *const u8) {
+    for idx in 0..ACC_NB {
+        let data_val = read_64le_unaligned(unsafe  { input.add(8 * idx) });
+        let data_key = data_val ^ read_64le_unaligned(unsafe { secret.add(8 * idx) });
 
-            acc.0[idx ^ 1] = acc.0[idx ^ 1].wrapping_add(data_val);
-            acc.0[idx] = acc.0[idx].wrapping_add(mult32_to64((data_key & 0xFFFFFFFF) as u32, (data_key >> 32) as u32));
-        }
+        acc.0[idx ^ 1] = acc.0[idx ^ 1].wrapping_add(data_val);
+        acc.0[idx] = acc.0[idx].wrapping_add(mult32_to64((data_key & 0xFFFFFFFF) as u32, (data_key >> 32) as u32));
     }
 }
 
-fn scramble_acc(acc: &mut Acc, secret: *const u8) {
+fn accumulate_512(acc: &mut Acc, input: *const u8, secret: *const u8) {
     #[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
+    accumulate_512_sse2(acc, input, secret);
+
+    #[cfg(target_feature = "avx2")]
+    accumulate_512_avx2(acc, input, secret);
+
+    #[cfg(not(any(target_feature = "avx2", target_feature = "sse2")))]
+    accumulate_512_scalar(acc, input, secret);
+}
+
+#[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
+#[inline(always)]
+fn scramble_acc_sse2(acc: &mut Acc, secret: *const u8) {
     unsafe {
         #[cfg(target_arch = "x86")]
         use core::arch::x86::*;
@@ -232,8 +247,11 @@ fn scramble_acc(acc: &mut Acc, secret: *const u8) {
             xacc.add(idx).write(_mm_add_epi64(prod_lo, _mm_slli_epi64(prod_hi, 32)));
         }
     }
+}
 
-    #[cfg(target_feature = "avx2")]
+#[cfg(target_feature = "avx2")]
+#[inline(always)]
+fn scramble_acc_avx2(acc: &mut Acc, secret: *const u8) {
     unsafe {
         #[cfg(target_arch = "x86")]
         use core::arch::x86::*;
@@ -258,16 +276,28 @@ fn scramble_acc(acc: &mut Acc, secret: *const u8) {
             xacc.add(idx).write(_mm256_add_epi64(prod_lo, _mm256_slli_epi64(prod_hi, 32)));
         }
     }
+}
+
+#[cfg(not(any(target_feature = "avx2", target_feature = "sse2")))]
+#[inline(always)]
+fn scramble_acc_scalar(acc: &mut Acc, secret: *const u8) {
+    for idx in 0..ACC_NB {
+        let key = read_64le_unaligned(unsafe { secret.add(8 * idx) });
+        let mut acc_val = xorshift64(acc.0[idx], 47);
+        acc_val ^= key;
+        acc.0[idx] = acc_val.wrapping_mul(xxh32::PRIME_1 as u64);
+    }
+}
+
+fn scramble_acc(acc: &mut Acc, secret: *const u8) {
+    #[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
+    scramble_acc_sse2(acc, secret);
+
+    #[cfg(target_feature = "avx2")]
+    scramble_acc_avx2(acc, secret);
 
     #[cfg(not(any(target_feature = "avx2", target_feature = "sse2")))]
-    {
-        for idx in 0..ACC_NB {
-            let key = read_64le_unaligned(unsafe { secret.add(8 * idx) });
-            let mut acc_val = xorshift64(acc.0[idx], 47);
-            acc_val ^= key;
-            acc.0[idx] = acc_val.wrapping_mul(xxh32::PRIME_1 as u64);
-        }
-    }
+    scramble_acc_scalar(acc, secret)
 }
 
 #[inline(always)]
