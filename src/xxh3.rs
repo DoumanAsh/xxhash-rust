@@ -69,19 +69,19 @@ fn slice_offset_ptr(slice: &[u8], offset: usize) -> *const u8 {
 
 #[inline(always)]
 fn read_32le_unaligned(data: *const u8) -> u32 {
-    let mut result = mem::MaybeUninit::<u32>::uninit();
+    debug_assert!(!data.is_null());
+
     unsafe {
-        ptr::copy_nonoverlapping(data, result.as_mut_ptr() as _, mem::size_of::<u32>());
-        result.assume_init().to_le()
+        ptr::read_unaligned(data as *const u32).to_le()
     }
 }
 
 #[inline(always)]
 fn read_64le_unaligned(data: *const u8) -> u64 {
-    let mut result = mem::MaybeUninit::<u64>::uninit();
+    debug_assert!(!data.is_null());
+
     unsafe {
-        ptr::copy_nonoverlapping(data, result.as_mut_ptr() as _, mem::size_of::<u64>());
-        result.assume_init().to_le()
+        ptr::read_unaligned(data as *const u64).to_le()
     }
 }
 

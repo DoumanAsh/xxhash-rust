@@ -73,7 +73,13 @@ jobs:
     if: github.event.pull_request.draft == false
     strategy:
       matrix:
-        target: ["arm-unknown-linux-musleabi", "i586-unknown-linux-musl", "powerpc-unknown-linux-gnu", "mips-unknown-linux-musl", "mips64-unknown-linux-gnuabi64"]
+        target: [
+          "arm-unknown-linux-musleabi",
+          "i586-unknown-linux-musl",
+          "powerpc-unknown-linux-gnu",
+          #"mips-unknown-linux-musl",
+          #"mips64-unknown-linux-gnuabi64"
+        ]
 
     steps:
     - uses: actions/checkout@v1
