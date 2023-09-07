@@ -1,4 +1,5 @@
 #[cfg(feature = "xxh64")]
+#[cfg_attr(miri, ignore)]
 #[test]
 fn assert_xxh64() {
     use getrandom::getrandom;
@@ -39,6 +40,7 @@ fn assert_xxh64() {
 }
 
 #[cfg(feature = "xxh32")]
+#[cfg_attr(miri, ignore)]
 #[test]
 fn assert_xxh32() {
     use getrandom::getrandom;
@@ -79,6 +81,7 @@ fn assert_xxh32() {
 }
 
 #[cfg(feature = "const_xxh32")]
+#[cfg_attr(miri, ignore)]
 #[test]
 fn assert_const_xxh32() {
     use getrandom::getrandom;
@@ -108,6 +111,7 @@ fn assert_const_xxh32() {
 }
 
 #[cfg(feature = "const_xxh64")]
+#[cfg_attr(miri, ignore)]
 #[test]
 fn assert_const_xxh64() {
     use getrandom::getrandom;
@@ -137,6 +141,7 @@ fn assert_const_xxh64() {
 }
 
 #[cfg(feature = "const_xxh3")]
+#[cfg_attr(miri, ignore)]
 #[test]
 fn assert_const_xxh3() {
     use getrandom::getrandom;
@@ -179,6 +184,7 @@ fn assert_const_xxh3() {
 }
 
 #[cfg(feature = "xxh3")]
+#[cfg_attr(miri, ignore)]
 #[test]
 fn assert_xxh3() {
     use getrandom::getrandom;

@@ -77,7 +77,7 @@ fn test_vectors_xxh3() {
         let digest = hasher.digest();
         assert_eq!(xxh3_64(manifest.as_bytes()), digest, "Streaming variant contradict oneshot function");
         let digest = fixture.format(digest);
-        assert_eq!(digest, expected); 
+        assert_eq!(digest, expected);
 
         hasher.reset();
     }
