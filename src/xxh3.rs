@@ -582,16 +582,18 @@ impl Xxh3 {
 
     #[inline]
     ///Hashes provided chunk
-    pub fn update(&mut self, mut input: &[u8]) {
+    pub fn update(&mut self, input: &[u8]) {
         const INTERNAL_BUFFER_STRIPES: usize = INTERNAL_BUFFER_SIZE / STRIPE_LEN;
 
-        self.total_len = self.total_len.wrapping_add(input.len() as u64);
+        let mut input_ptr = input.as_ptr();
+        let mut input_len = input.len();
+        self.total_len = self.total_len.wrapping_add(input_len as u64);
 
-        if (input.len() + self.buffered_size as usize) <= INTERNAL_BUFFER_SIZE {
+        if (input_len + self.buffered_size as usize) <= INTERNAL_BUFFER_SIZE {
             unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr(), (self.buffer.0.as_mut_ptr() as *mut u8).offset(self.buffered_size as isize), input.len())
+                ptr::copy_nonoverlapping(input_ptr, (self.buffer.0.as_mut_ptr() as *mut u8).offset(self.buffered_size as isize), input_len)
             }
-            self.buffered_size += input.len() as u16;
+            self.buffered_size += input_len as u16;
             return;
         }
 
@@ -599,70 +601,41 @@ impl Xxh3 {
             let fill_len = INTERNAL_BUFFER_SIZE - self.buffered_size as usize;
 
             unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr(), (self.buffer.0.as_mut_ptr() as *mut u8).offset(self.buffered_size as isize), fill_len)
+                ptr::copy_nonoverlapping(input_ptr, (self.buffer.0.as_mut_ptr() as *mut u8).offset(self.buffered_size as isize), fill_len);
+                input_ptr = input_ptr.add(fill_len);
+                input_len -= fill_len;
             }
 
             self.nb_stripes_acc = Self::consume_stripes(&mut self.acc, INTERNAL_BUFFER_STRIPES, self.nb_stripes_acc, self.buffer.0.as_ptr(), &self.custom_secret.0);
 
-            input = &input[fill_len..];
             self.buffered_size = 0;
         }
 
-        debug_assert_ne!(input.len(), 0);
-
-
-        //big input incoming
-        if input.len() > (STRIPES_PER_BLOCK * STRIPE_LEN) {
-            let mut nb_stripes = (input.len() - 1) / STRIPE_LEN;
-
-            debug_assert!(self.nb_stripes_acc <= STRIPES_PER_BLOCK);
-            {
-                let stripes_to_end = STRIPES_PER_BLOCK - self.nb_stripes_acc;
-
-                accumulate_loop(&mut self.acc, input.as_ptr(), slice_offset_ptr(&self.custom_secret.0, self.nb_stripes_acc * SECRET_CONSUME_RATE), stripes_to_end);
-                scramble_acc(&mut self.acc, slice_offset_ptr(&self.custom_secret.0, DEFAULT_SECRET_SIZE - STRIPE_LEN));
-                self.nb_stripes_acc = 0;
-
-                input = &input[stripes_to_end * STRIPE_LEN..];
-                nb_stripes -= stripes_to_end
-            }
-
-            while nb_stripes >= STRIPES_PER_BLOCK {
-                accumulate_loop(&mut self.acc, input.as_ptr(), self.custom_secret.0.as_ptr(), STRIPES_PER_BLOCK);
-                scramble_acc(&mut self.acc, slice_offset_ptr(&self.custom_secret.0, DEFAULT_SECRET_SIZE - STRIPE_LEN));
-                input = &input[STRIPES_PER_BLOCK * STRIPE_LEN..];
-                nb_stripes -= STRIPES_PER_BLOCK;
-            }
-
-            accumulate_loop(&mut self.acc, input.as_ptr(), self.custom_secret.0.as_ptr(), nb_stripes);
-            input = &input[nb_stripes * STRIPE_LEN..];
-            debug_assert_ne!(input.len(), 0);
-            self.nb_stripes_acc = nb_stripes;
-
-            unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr().offset(-(STRIPE_LEN as isize)), (self.buffer.0.as_mut_ptr() as *mut u8).add(self.buffer.0.len() - STRIPE_LEN), STRIPE_LEN)
-            }
-        } else if input.len() > INTERNAL_BUFFER_SIZE {
+        debug_assert_ne!(input_len, 0);
+        if input_len > INTERNAL_BUFFER_SIZE {
             loop {
-                self.nb_stripes_acc = Self::consume_stripes(&mut self.acc, INTERNAL_BUFFER_STRIPES, self.nb_stripes_acc, input.as_ptr(), &self.custom_secret.0);
-                input = &input[INTERNAL_BUFFER_SIZE..];
+                self.nb_stripes_acc = Self::consume_stripes(&mut self.acc, INTERNAL_BUFFER_STRIPES, self.nb_stripes_acc, input_ptr, &self.custom_secret.0);
+                input_ptr = unsafe {
+                    input_ptr.add(INTERNAL_BUFFER_SIZE)
+                };
+                input_len = input_len - INTERNAL_BUFFER_SIZE;
 
-                if input.len() <= INTERNAL_BUFFER_SIZE {
+                if input_len <= INTERNAL_BUFFER_SIZE {
                     break;
                 }
             }
 
             unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr().offset(-(STRIPE_LEN as isize)), (self.buffer.0.as_mut_ptr() as *mut u8).add(self.buffer.0.len() - STRIPE_LEN), STRIPE_LEN)
+                ptr::copy_nonoverlapping(input_ptr.offset(-(STRIPE_LEN as isize)), (self.buffer.0.as_mut_ptr() as *mut u8).add(self.buffer.0.len() - STRIPE_LEN), STRIPE_LEN)
             }
         }
 
-        debug_assert_ne!(input.len(), 0);
+        debug_assert_ne!(input_len, 0);
         debug_assert_eq!(self.buffered_size, 0);
         unsafe {
-            ptr::copy_nonoverlapping(input.as_ptr(), self.buffer.0.as_mut_ptr() as *mut u8, input.len())
+            ptr::copy_nonoverlapping(input_ptr, self.buffer.0.as_mut_ptr() as *mut u8, input_len)
         }
-        self.buffered_size = input.len() as u16;
+        self.buffered_size = input_len as u16;
     }
 
     #[inline]
@@ -832,23 +805,9 @@ fn xxh3_128_9to16(input: &[u8], seed: u64, secret: &[u8]) -> u128 {
 
     mul_low = mul_low.wrapping_add((input.len() as u64 - 1) << 54);
     input_hi ^= flip_hi;
-
-    //Separate code for 32bit and bigger targets
-    //It only makes sense when width is multiple of 2, but if necessary change to simple if
-    //Not to mention I'm not sure you can even compile u128 on something like 16bit?
-    #[cfg(any(target_pointer_width = "32", target_pointer_width = "16", target_pointer_width = "8"))]
-    {
-        mul_high = mul_high.wrapping_add(
-            (input_hi & 0xFFFFFFFF00000000).wrapping_add(mult32_to64(input_hi as u32, xxh32::PRIME_2))
-        );
-    }
-
-    #[cfg(not(any(target_pointer_width = "32", target_pointer_width = "16", target_pointer_width = "8")))]
-    {
-        mul_high = mul_high.wrapping_add(
-            input_hi.wrapping_add(mult32_to64(input_hi as u32, xxh32::PRIME_2 - 1))
-        )
-    }
+    mul_high = mul_high.wrapping_add(
+        input_hi.wrapping_add(mult32_to64(input_hi as u32, xxh32::PRIME_2 - 1))
+    );
 
     mul_low ^= mul_high.swap_bytes();
 
