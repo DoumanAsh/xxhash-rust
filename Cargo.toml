@@ -7,8 +7,8 @@ description = "Implementation of xxhash"
 readme = "README.md"
 repository = "https://github.com/DoumanAsh/xxhash-rust"
 license = "BSL-1.0"
-keywords = ["hash", "xxhash", "xxh3", "hasher"]
-categories = ["algorithms"]
+keywords = ["hash", "xxhash", "xxh3", "hasher", "no-std"]
+categories = ["algorithms", "no-std::no-alloc"]
 include = [
     "**/*.rs",
     "Cargo.toml",
