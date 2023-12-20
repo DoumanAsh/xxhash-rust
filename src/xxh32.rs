@@ -91,6 +91,7 @@ pub fn xxh32(mut input: &[u8], seed: u32) -> u32 {
 }
 
 ///XXH32 Streaming algorithm
+#[derive(Clone)]
 pub struct Xxh32 {
     total_len: u32,
     is_large_len: bool,

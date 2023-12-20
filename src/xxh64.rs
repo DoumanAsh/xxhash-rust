@@ -123,6 +123,7 @@ pub fn xxh64(mut input: &[u8], seed: u64) -> u64 {
 }
 
 ///XXH64 Streaming algorithm
+#[derive(Clone)]
 pub struct Xxh64 {
     total_len: u64,
     v1: u64,
