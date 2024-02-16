@@ -12,7 +12,7 @@ use crate::xxh3_common::*;
 // Code is as close to original C implementation as possible
 // It does make it look ugly, but it is fast and easy to update once xxhash gets new version.
 
-#[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
+#[cfg(all(any(target_feature = "sse2", target_feature = "neon"), not(target_feature = "avx2")))]
 #[repr(align(16))]
 #[derive(Clone)]
 struct Acc([u64; ACC_NB]);
@@ -20,7 +20,7 @@ struct Acc([u64; ACC_NB]);
 #[repr(align(32))]
 #[derive(Clone)]
 struct Acc([u64; ACC_NB]);
-#[cfg(not(any(target_feature = "avx2", target_feature = "sse2")))]
+#[cfg(not(any(target_feature = "avx2", target_feature = "neon", target_feature = "sse2")))]
 #[repr(align(8))]
 #[derive(Clone)]
 struct Acc([u64; ACC_NB]);
@@ -141,6 +141,78 @@ fn custom_default_secret(seed: u64) -> [u8; DEFAULT_SECRET_SIZE] {
     }
 }
 
+#[cfg(target_feature = "neon")]
+#[inline(always)]
+fn accumulate_512_neon(acc: &mut Acc, input: *const u8, secret: *const u8) {
+    //Full Neon version from xxhash source
+    const NEON_LANES: usize = ACC_NB;
+
+    unsafe {
+        #[cfg(target_arch = "arm")]
+        use core::arch::arm::*;
+        #[cfg(target_arch = "aarch64")]
+        use core::arch::aarch64::*;
+
+        let mut idx = 0usize;
+        let xacc = acc.0.as_mut_ptr() as *mut uint64x2_t;
+
+        while idx.wrapping_add(1) < NEON_LANES / 2 {
+            /* data_vec = xinput[i]; */
+            let data_vec_1 = vreinterpretq_u64_u8(vld1q_u8(input.add(idx.wrapping_mul(16))));
+            let data_vec_2 = vreinterpretq_u64_u8(vld1q_u8(input.add(idx.wrapping_add(1).wrapping_mul(16))));
+            /* key_vec  = xsecret[i];  */
+            let key_vec_1  = vreinterpretq_u64_u8(vld1q_u8(secret.add(idx.wrapping_mul(16))));
+            let key_vec_2  = vreinterpretq_u64_u8(vld1q_u8(secret.add(idx.wrapping_add(1).wrapping_mul(16))));
+            /* data_swap = swap(data_vec) */
+            let data_swap_1 = vextq_u64(data_vec_1, data_vec_1, 1);
+            let data_swap_2 = vextq_u64(data_vec_2, data_vec_2, 1);
+            /* data_key = data_vec ^ key_vec; */
+            let data_key_1 = veorq_u64(data_vec_1, key_vec_1);
+            let data_key_2 = veorq_u64(data_vec_2, key_vec_2);
+
+            let unzipped = vuzpq_u32(
+                vreinterpretq_u32_u64(data_key_1),
+                vreinterpretq_u32_u64(data_key_2)
+            );
+            /* data_key_lo = data_key & 0xFFFFFFFF */
+            let data_key_lo = unzipped.0;
+            /* data_key_hi = data_key >> 32 */
+            let data_key_hi = unzipped.1;
+
+            //xxhash does it with inline assembly, but idk if I want to embed it here
+            let sum_1 = vmlal_u32(data_swap_1, vget_low_u32(data_key_lo), vget_low_u32(data_key_hi));
+            let sum_2 = vmlal_high_u32(data_swap_2, data_key_lo, data_key_hi);
+
+            xacc.add(idx).write(vaddq_u64(*xacc.add(idx), sum_1));
+            xacc.add(idx.wrapping_add(1)).write(vaddq_u64(*xacc.add(idx.wrapping_add(1)), sum_2));
+
+            idx = idx.wrapping_add(2);
+        }
+
+        while idx < NEON_LANES / 2 {
+            /* data_vec = xinput[i]; */
+            let data_vec = vreinterpretq_u64_u8(vld1q_u8(input.add(idx.wrapping_mul(16))));
+            /* key_vec  = xsecret[i];  */
+            let key_vec  = vreinterpretq_u64_u8(vld1q_u8(secret.add(idx.wrapping_mul(16))));
+            /* acc_vec_2 = swap(data_vec) */
+            let data_swap = vextq_u64(data_vec, data_vec, 1);
+            /* data_key = data_vec ^ key_vec; */
+            let data_key = veorq_u64(data_vec, key_vec);
+            /* For two lanes, just use VMOVN and VSHRN. */
+            /* data_key_lo = data_key & 0xFFFFFFFF; */
+            let data_key_lo = vmovn_u64(data_key);
+            /* data_key_hi = data_key >> 32; */
+            let data_key_hi = vshrn_n_u64(data_key, 32);
+            /* sum = data_swap + (u64x2) data_key_lo * (u64x2) data_key_hi; */
+            let sum = vmlal_u32(data_swap, data_key_lo, data_key_hi);
+            /* xacc[i] = acc_vec + sum; */
+            xacc.add(idx).write(vaddq_u64(*xacc.add(idx), sum));
+
+            idx = idx.wrapping_add(1);
+        }
+    }
+}
+
 #[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
 #[inline(always)]
 fn accumulate_512_sse2(acc: &mut Acc, input: *const u8, secret: *const u8) {
@@ -197,7 +269,7 @@ fn accumulate_512_avx2(acc: &mut Acc, input: *const u8, secret: *const u8) {
     }
 }
 
-#[cfg(not(any(target_feature = "avx2", target_feature = "sse2")))]
+#[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon")))]
 #[inline(always)]
 fn accumulate_512_scalar(acc: &mut Acc, input: *const u8, secret: *const u8) {
     for idx in 0..ACC_NB {
@@ -210,14 +282,53 @@ fn accumulate_512_scalar(acc: &mut Acc, input: *const u8, secret: *const u8) {
 }
 
 fn accumulate_512(acc: &mut Acc, input: *const u8, secret: *const u8) {
+    #[cfg(target_feature = "neon")]
+    accumulate_512_neon(acc, input, secret);
+
     #[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
     accumulate_512_sse2(acc, input, secret);
 
     #[cfg(target_feature = "avx2")]
     accumulate_512_avx2(acc, input, secret);
 
-    #[cfg(not(any(target_feature = "avx2", target_feature = "sse2")))]
+    #[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon")))]
     accumulate_512_scalar(acc, input, secret);
+}
+
+#[cfg(target_feature = "neon")]
+#[inline(always)]
+fn scramble_acc_neon(acc: &mut Acc, secret: *const u8) {
+    //Full Neon version from xxhash source
+    const NEON_LANES: usize = ACC_NB;
+
+    unsafe {
+        #[cfg(target_arch = "arm")]
+        use core::arch::arm::*;
+        #[cfg(target_arch = "aarch64")]
+        use core::arch::aarch64::*;
+
+        let xacc = acc.0.as_mut_ptr() as *mut uint64x2_t;
+
+        let prime_low = vdup_n_u32(xxh32::PRIME_1);
+        let prime_hi = vreinterpretq_u32_u64(vdupq_n_u64((xxh32::PRIME_1 as u64) << 32));
+
+        for idx in 0..NEON_LANES / 2 {
+           /* xacc[i] ^= (xacc[i] >> 47); */
+            let acc_vec  = *xacc.add(idx);
+            let shifted  = vshrq_n_u64(acc_vec, 47);
+            let data_vec = veorq_u64(acc_vec, shifted);
+
+            /* xacc[i] ^= xsecret[i]; */
+            //According to xxhash sources you can do unaligned read here
+            //but since Rust is kinda retarded about unaligned reads I'll avoid it for now
+            let key_vec  = vreinterpretq_u64_u8(vld1q_u8(secret.add(idx.wrapping_mul(16))));
+            let data_key = veorq_u64(data_vec, key_vec);
+
+            let prod_hi = vmulq_u32(vreinterpretq_u32_u64(data_key), prime_hi);
+            let data_key_lo = vmovn_u64(data_key);
+            xacc.add(idx).write(vmlal_u32(vreinterpretq_u64_u32(prod_hi), data_key_lo, prime_low));
+        }
+    }
 }
 
 #[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
@@ -278,7 +389,7 @@ fn scramble_acc_avx2(acc: &mut Acc, secret: *const u8) {
     }
 }
 
-#[cfg(not(any(target_feature = "avx2", target_feature = "sse2")))]
+#[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon")))]
 #[inline(always)]
 fn scramble_acc_scalar(acc: &mut Acc, secret: *const u8) {
     for idx in 0..ACC_NB {
@@ -290,13 +401,16 @@ fn scramble_acc_scalar(acc: &mut Acc, secret: *const u8) {
 }
 
 fn scramble_acc(acc: &mut Acc, secret: *const u8) {
+    #[cfg(target_feature = "neon")]
+    scramble_acc_neon(acc, secret);
+
     #[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
     scramble_acc_sse2(acc, secret);
 
     #[cfg(target_feature = "avx2")]
     scramble_acc_avx2(acc, secret);
 
-    #[cfg(not(any(target_feature = "avx2", target_feature = "sse2")))]
+    #[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon")))]
     scramble_acc_scalar(acc, secret)
 }
 
@@ -591,7 +705,7 @@ impl Xxh3 {
 
         if (input_len + self.buffered_size as usize) <= INTERNAL_BUFFER_SIZE {
             unsafe {
-                ptr::copy_nonoverlapping(input_ptr, (self.buffer.0.as_mut_ptr() as *mut u8).offset(self.buffered_size as isize), input_len)
+                ptr::copy_nonoverlapping(input_ptr, (self.buffer.0.as_mut_ptr()).offset(self.buffered_size as isize), input_len)
             }
             self.buffered_size += input_len as u16;
             return;
@@ -601,7 +715,7 @@ impl Xxh3 {
             let fill_len = INTERNAL_BUFFER_SIZE - self.buffered_size as usize;
 
             unsafe {
-                ptr::copy_nonoverlapping(input_ptr, (self.buffer.0.as_mut_ptr() as *mut u8).offset(self.buffered_size as isize), fill_len);
+                ptr::copy_nonoverlapping(input_ptr, (self.buffer.0.as_mut_ptr()).offset(self.buffered_size as isize), fill_len);
                 input_ptr = input_ptr.add(fill_len);
                 input_len -= fill_len;
             }
@@ -626,14 +740,14 @@ impl Xxh3 {
             }
 
             unsafe {
-                ptr::copy_nonoverlapping(input_ptr.offset(-(STRIPE_LEN as isize)), (self.buffer.0.as_mut_ptr() as *mut u8).add(self.buffer.0.len() - STRIPE_LEN), STRIPE_LEN)
+                ptr::copy_nonoverlapping(input_ptr.offset(-(STRIPE_LEN as isize)), (self.buffer.0.as_mut_ptr()).add(self.buffer.0.len() - STRIPE_LEN), STRIPE_LEN)
             }
         }
 
         debug_assert_ne!(input_len, 0);
         debug_assert_eq!(self.buffered_size, 0);
         unsafe {
-            ptr::copy_nonoverlapping(input_ptr, self.buffer.0.as_mut_ptr() as *mut u8, input_len)
+            ptr::copy_nonoverlapping(input_ptr, self.buffer.0.as_mut_ptr(), input_len)
         }
         self.buffered_size = input_len as u16;
     }
