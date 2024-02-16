@@ -141,6 +141,22 @@ fn custom_default_secret(seed: u64) -> [u8; DEFAULT_SECRET_SIZE] {
     }
 }
 
+#[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+macro_rules! vld1q_u8 {
+    ($ptr:expr) => {
+        core::arch::aarch64::vld1q_u8($ptr)
+
+    }
+}
+
+//For some dumb reasons vld1q_u8 is unstable for arm
+#[cfg(all(target_arch = "arm", target_feature = "neon"))]
+macro_rules! vld1q_u8 {
+    ($ptr:expr) => {
+        core::ptr::read_unaligned($ptr as *const uint8x16_t)
+    }
+}
+
 #[cfg(target_feature = "neon")]
 #[inline(always)]
 fn accumulate_512_neon(acc: &mut Acc, input: *const u8, secret: *const u8) {
@@ -158,11 +174,11 @@ fn accumulate_512_neon(acc: &mut Acc, input: *const u8, secret: *const u8) {
 
         while idx.wrapping_add(1) < NEON_LANES / 2 {
             /* data_vec = xinput[i]; */
-            let data_vec_1 = vreinterpretq_u64_u8(vld1q_u8(input.add(idx.wrapping_mul(16))));
-            let data_vec_2 = vreinterpretq_u64_u8(vld1q_u8(input.add(idx.wrapping_add(1).wrapping_mul(16))));
+            let data_vec_1 = vreinterpretq_u64_u8(vld1q_u8!(input.add(idx.wrapping_mul(16))));
+            let data_vec_2 = vreinterpretq_u64_u8(vld1q_u8!(input.add(idx.wrapping_add(1).wrapping_mul(16))));
             /* key_vec  = xsecret[i];  */
-            let key_vec_1  = vreinterpretq_u64_u8(vld1q_u8(secret.add(idx.wrapping_mul(16))));
-            let key_vec_2  = vreinterpretq_u64_u8(vld1q_u8(secret.add(idx.wrapping_add(1).wrapping_mul(16))));
+            let key_vec_1  = vreinterpretq_u64_u8(vld1q_u8!(secret.add(idx.wrapping_mul(16))));
+            let key_vec_2  = vreinterpretq_u64_u8(vld1q_u8!(secret.add(idx.wrapping_add(1).wrapping_mul(16))));
             /* data_swap = swap(data_vec) */
             let data_swap_1 = vextq_u64(data_vec_1, data_vec_1, 1);
             let data_swap_2 = vextq_u64(data_vec_2, data_vec_2, 1);
@@ -194,9 +210,9 @@ fn accumulate_512_neon(acc: &mut Acc, input: *const u8, secret: *const u8) {
 
         while idx < NEON_LANES / 2 {
             /* data_vec = xinput[i]; */
-            let data_vec = vreinterpretq_u64_u8(vld1q_u8(input.add(idx.wrapping_mul(16))));
+            let data_vec = vreinterpretq_u64_u8(vld1q_u8!(input.add(idx.wrapping_mul(16))));
             /* key_vec  = xsecret[i];  */
-            let key_vec  = vreinterpretq_u64_u8(vld1q_u8(secret.add(idx.wrapping_mul(16))));
+            let key_vec  = vreinterpretq_u64_u8(vld1q_u8!(secret.add(idx.wrapping_mul(16))));
             /* acc_vec_2 = swap(data_vec) */
             let data_swap = vextq_u64(data_vec, data_vec, 1);
             /* data_key = data_vec ^ key_vec; */
@@ -324,7 +340,7 @@ fn scramble_acc_neon(acc: &mut Acc, secret: *const u8) {
             /* xacc[i] ^= xsecret[i]; */
             //According to xxhash sources you can do unaligned read here
             //but since Rust is kinda retarded about unaligned reads I'll avoid it for now
-            let key_vec  = vreinterpretq_u64_u8(vld1q_u8(secret.add(idx.wrapping_mul(16))));
+            let key_vec  = vreinterpretq_u64_u8(vld1q_u8!(secret.add(idx.wrapping_mul(16))));
             let data_key = veorq_u64(data_vec, key_vec);
 
             let prod_hi = vmulq_u32(vreinterpretq_u32_u64(data_key), prime_hi);
