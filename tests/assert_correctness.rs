@@ -197,8 +197,8 @@ fn assert_xxh3() {
     let mut hasher_1_128 = Xxh3::new();
     let mut hasher_2_128 = Xxh3::with_seed(1);
 
-    let mut input = Vec::with_capacity(2048);
-    for num in 0..2048 {
+    let mut input = Vec::with_capacity(4096);
+    for num in 0..input.capacity() {
         input.resize(num, 1);
         println!("input(len={})", input.len());
         getrandom(&mut input).expect("getrandom");
