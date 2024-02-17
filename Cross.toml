@@ -1,0 +1,3 @@
+[target.aarch64-unknown-linux-musl]
+pre-build = ["dpkg --add-architecture arm64 && apt-get update && apt-get install -y valgrind valgrind:arm64"]
+
