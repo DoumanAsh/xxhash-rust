@@ -247,28 +247,6 @@ fn accumulate_512_neon(acc: &mut Acc, input: *const u8, secret: *const u8) {
 
             idx = idx.wrapping_add(2);
         }
-
-        while idx < NEON_LANES / 2 {
-            /* data_vec = xinput[i]; */
-            let data_vec = vreinterpretq_u64_u8(vld1q_u8!(input.add(idx.wrapping_mul(16))));
-            /* key_vec  = xsecret[i];  */
-            let key_vec  = vreinterpretq_u64_u8(vld1q_u8!(secret.add(idx.wrapping_mul(16))));
-            /* acc_vec_2 = swap(data_vec) */
-            let data_swap = vextq_u64(data_vec, data_vec, 1);
-            /* data_key = data_vec ^ key_vec; */
-            let data_key = veorq_u64(data_vec, key_vec);
-            /* For two lanes, just use VMOVN and VSHRN. */
-            /* data_key_lo = data_key & 0xFFFFFFFF; */
-            let data_key_lo = vmovn_u64(data_key);
-            /* data_key_hi = data_key >> 32; */
-            let data_key_hi = vshrn_n_u64(data_key, 32);
-            /* sum = data_swap + (u64x2) data_key_lo * (u64x2) data_key_hi; */
-            let sum = vmlal_u32(data_swap, data_key_lo, data_key_hi);
-            /* xacc[i] = acc_vec + sum; */
-            xacc.add(idx).write(vaddq_u64(*xacc.add(idx), sum));
-
-            idx = idx.wrapping_add(1);
-        }
     }
 }
 
