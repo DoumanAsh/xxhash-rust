@@ -53,7 +53,8 @@
 //!
 //!- SSE2 - widely available, can be safely enabled in 99% of cases. Enabled by default in `x86_64` targets.
 //!- AVX2;
-//!- Neon - Enabled by default on aarch64 targets (most likely)
+//!- Neon - Enabled by default on aarch64 targets (most likely);
+//!- Wasm SIMD128 - Has to be enabled via rust flag: `-Ctarget-feature=+simd128`
 //!
 //!## Streaming vs One-shot
 //!

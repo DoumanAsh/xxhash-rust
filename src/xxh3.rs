@@ -12,7 +12,7 @@ use crate::xxh3_common::*;
 // Code is as close to original C implementation as possible
 // It does make it look ugly, but it is fast and easy to update once xxhash gets new version.
 
-#[cfg(all(any(target_feature = "sse2", target_feature = "neon"), not(target_feature = "avx2")))]
+#[cfg(all(any(target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128")), not(target_feature = "avx2")))]
 #[repr(align(16))]
 #[derive(Clone)]
 struct Acc([u64; ACC_NB]);
@@ -20,7 +20,7 @@ struct Acc([u64; ACC_NB]);
 #[repr(align(32))]
 #[derive(Clone)]
 struct Acc([u64; ACC_NB]);
-#[cfg(not(any(target_feature = "avx2", target_feature = "neon", target_feature = "sse2")))]
+#[cfg(not(any(target_feature = "avx2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"), target_feature = "sse2")))]
 #[repr(align(8))]
 #[derive(Clone)]
 struct Acc([u64; ACC_NB]);
@@ -138,6 +138,46 @@ fn custom_default_secret(seed: u64) -> [u8; DEFAULT_SECRET_SIZE] {
 
     unsafe {
         result.assume_init()
+    }
+}
+
+#[cfg(all(target_family = "wasm", target_feature = "simd128"))]
+fn accumulate_512_wasm(acc: &mut Acc, input: *const u8, secret: *const u8) {
+    const LANES: usize = ACC_NB;
+
+    use core::arch::wasm32::*;
+
+    let mut idx = 0usize;
+    let xacc = acc.0.as_mut_ptr() as *mut v128;
+
+    unsafe {
+        while idx.wrapping_add(1) < LANES / 2 {
+            let data_vec_1 = v128_load(input.add(idx.wrapping_mul(16)) as _);
+            let data_vec_2 = v128_load(input.add(idx.wrapping_add(1).wrapping_mul(16)) as _);
+
+            let key_vec_1 = v128_load(secret.add(idx.wrapping_mul(16)) as _);
+            let key_vec_2 = v128_load(secret.add(idx.wrapping_add(1).wrapping_mul(16)) as _);
+
+            let data_key_1 = v128_xor(data_vec_1, key_vec_1);
+            let data_key_2 = v128_xor(data_vec_2, key_vec_2);
+
+            let data_swap_1 = i64x2_shuffle::<1, 0>(data_vec_1, data_vec_1);
+            let data_swap_2 = i64x2_shuffle::<1, 0>(data_vec_2, data_vec_2);
+
+            let mixed_lo = i32x4_shuffle::<0, 2, 4, 6>(data_key_1, data_key_2);
+            let mixed_hi = i32x4_shuffle::<1, 3, 5, 7>(data_key_1, data_key_2);
+
+            let prod_1 = u64x2_extmul_low_u32x4(mixed_lo, mixed_hi);
+            let prod_2 = u64x2_extmul_high_u32x4(mixed_lo, mixed_hi);
+
+            let sum_1 = i64x2_add(prod_1, data_swap_1);
+            let sum_2 = i64x2_add(prod_2, data_swap_2);
+
+            xacc.add(idx).write(i64x2_add(sum_1, *xacc.add(idx)));
+            xacc.add(idx.wrapping_add(1)).write(i64x2_add(sum_2, *xacc.add(idx.wrapping_add(1))));
+
+            idx = idx.wrapping_add(2);
+        }
     }
 }
 
@@ -288,7 +328,7 @@ fn accumulate_512_avx2(acc: &mut Acc, input: *const u8, secret: *const u8) {
     }
 }
 
-#[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon")))]
+#[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
 #[inline(always)]
 fn accumulate_512_scalar(acc: &mut Acc, input: *const u8, secret: *const u8) {
     for idx in 0..ACC_NB {
@@ -301,6 +341,9 @@ fn accumulate_512_scalar(acc: &mut Acc, input: *const u8, secret: *const u8) {
 }
 
 fn accumulate_512(acc: &mut Acc, input: *const u8, secret: *const u8) {
+    #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
+    accumulate_512_wasm(acc, input, secret);
+
     #[cfg(target_feature = "neon")]
     accumulate_512_neon(acc, input, secret);
 
@@ -310,8 +353,30 @@ fn accumulate_512(acc: &mut Acc, input: *const u8, secret: *const u8) {
     #[cfg(target_feature = "avx2")]
     accumulate_512_avx2(acc, input, secret);
 
-    #[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon")))]
+    #[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
     accumulate_512_scalar(acc, input, secret);
+}
+
+#[cfg(all(target_family = "wasm", target_feature = "simd128"))]
+#[inline(always)]
+fn scramble_acc_wasm(acc: &mut Acc, secret: *const u8) {
+    const LANES: usize = ACC_NB;
+
+    use core::arch::wasm32::*;
+
+    let xacc = acc.0.as_mut_ptr() as *mut v128;
+    let prime = u64x2_splat(xxh32::PRIME_1 as _);
+
+    unsafe {
+        for idx in 0..LANES / 2 {
+            let acc_vec = v128_load(xacc.add(idx) as _);
+            let shifted = u64x2_shr(acc_vec, 47);
+            let data_vec = v128_xor(acc_vec, shifted);
+            let key_vec = v128_load(secret.add(16usize.wrapping_mul(idx)) as _);
+            let mixed = v128_xor(data_vec, key_vec);
+            xacc.add(idx).write(i64x2_mul(mixed, prime));
+        }
+    }
 }
 
 #[cfg(target_feature = "neon")]
@@ -408,7 +473,7 @@ fn scramble_acc_avx2(acc: &mut Acc, secret: *const u8) {
     }
 }
 
-#[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon")))]
+#[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
 #[inline(always)]
 fn scramble_acc_scalar(acc: &mut Acc, secret: *const u8) {
     for idx in 0..ACC_NB {
@@ -420,6 +485,9 @@ fn scramble_acc_scalar(acc: &mut Acc, secret: *const u8) {
 }
 
 fn scramble_acc(acc: &mut Acc, secret: *const u8) {
+    #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
+    scramble_acc_wasm(acc, secret);
+
     #[cfg(target_feature = "neon")]
     scramble_acc_neon(acc, secret);
 
@@ -429,7 +497,7 @@ fn scramble_acc(acc: &mut Acc, secret: *const u8) {
     #[cfg(target_feature = "avx2")]
     scramble_acc_avx2(acc, secret);
 
-    #[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon")))]
+    #[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
     scramble_acc_scalar(acc, secret)
 }
 
