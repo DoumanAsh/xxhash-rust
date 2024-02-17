@@ -28,8 +28,8 @@ xxh3 = [] # Enable xxh3 implementation
 const_xxh3 = [] # Enable const xxh3 implementation
 
 [dev-dependencies]
-xxhash-c-sys = "0.8.4"
 getrandom = "0.2"
+xxhash-c-sys = "0.8.6"
 
 [package.metadata.docs.rs]
 features = ["xxh32", "const_xxh32", "xxh64", "const_xxh64", "xxh3", "const_xxh3"]
