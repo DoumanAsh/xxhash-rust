@@ -57,6 +57,7 @@ Used SIMD acceleration:
 
 - SSE2 - widely available, can be safely enabled in 99% of cases. Enabled by default in `x86_64` targets.
 - AVX2;
+- Neon - Enabled by default on aarch64 targets (most likely)
 
 ## Streaming vs One-shot
 
