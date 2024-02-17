@@ -21,15 +21,11 @@ on:
 
 jobs:
   full-test:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     if: github.event.pull_request.draft == false
 
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
 
     - name: Install Rust Unix
       run: |
@@ -90,12 +86,13 @@ jobs:
           "arm-unknown-linux-musleabi",
           "i586-unknown-linux-musl",
           "powerpc-unknown-linux-gnu",
+          "aarch64-unknown-linux-musl",
           #"mips-unknown-linux-musl",
           #"mips64-unknown-linux-gnuabi64"
         ]
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
 
     - name: Install Rust Unix
       run: |
