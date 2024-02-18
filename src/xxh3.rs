@@ -198,7 +198,6 @@ macro_rules! vld1q_u8 {
 }
 
 #[cfg(target_feature = "neon")]
-#[inline(always)]
 fn accumulate_512_neon(acc: &mut Acc, input: *const u8, secret: *const u8) {
     //Full Neon version from xxhash source
     const NEON_LANES: usize = ACC_NB;
@@ -251,7 +250,6 @@ fn accumulate_512_neon(acc: &mut Acc, input: *const u8, secret: *const u8) {
 }
 
 #[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
-#[inline(always)]
 fn accumulate_512_sse2(acc: &mut Acc, input: *const u8, secret: *const u8) {
     unsafe {
         #[cfg(target_arch = "x86")]
@@ -279,7 +277,6 @@ fn accumulate_512_sse2(acc: &mut Acc, input: *const u8, secret: *const u8) {
 }
 
 #[cfg(target_feature = "avx2")]
-#[inline(always)]
 fn accumulate_512_avx2(acc: &mut Acc, input: *const u8, secret: *const u8) {
     unsafe {
         #[cfg(target_arch = "x86")]
@@ -307,7 +304,6 @@ fn accumulate_512_avx2(acc: &mut Acc, input: *const u8, secret: *const u8) {
 }
 
 #[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
-#[inline(always)]
 fn accumulate_512_scalar(acc: &mut Acc, input: *const u8, secret: *const u8) {
     for idx in 0..ACC_NB {
         let data_val = read_64le_unaligned(unsafe  { input.add(8 * idx) });
@@ -318,25 +314,18 @@ fn accumulate_512_scalar(acc: &mut Acc, input: *const u8, secret: *const u8) {
     }
 }
 
-fn accumulate_512(acc: &mut Acc, input: *const u8, secret: *const u8) {
-    #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
-    accumulate_512_wasm(acc, input, secret);
-
-    #[cfg(target_feature = "neon")]
-    accumulate_512_neon(acc, input, secret);
-
-    #[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
-    accumulate_512_sse2(acc, input, secret);
-
-    #[cfg(target_feature = "avx2")]
-    accumulate_512_avx2(acc, input, secret);
-
-    #[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
-    accumulate_512_scalar(acc, input, secret);
-}
+#[cfg(all(target_family = "wasm", target_feature = "simd128"))]
+use accumulate_512_wasm as accumulate_512;
+#[cfg(target_feature = "neon")]
+use accumulate_512_neon as accumulate_512;
+#[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
+use accumulate_512_sse2 as accumulate_512;
+#[cfg(target_feature = "avx2")]
+use accumulate_512_avx2 as accumulate_512;
+#[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
+use accumulate_512_scalar as accumulate_512;
 
 #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
-#[inline(always)]
 fn scramble_acc_wasm(acc: &mut Acc, secret: *const u8) {
     const LANES: usize = ACC_NB;
 
@@ -358,7 +347,6 @@ fn scramble_acc_wasm(acc: &mut Acc, secret: *const u8) {
 }
 
 #[cfg(target_feature = "neon")]
-#[inline(always)]
 fn scramble_acc_neon(acc: &mut Acc, secret: *const u8) {
     //Full Neon version from xxhash source
     const NEON_LANES: usize = ACC_NB;
@@ -394,7 +382,6 @@ fn scramble_acc_neon(acc: &mut Acc, secret: *const u8) {
 }
 
 #[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
-#[inline(always)]
 fn scramble_acc_sse2(acc: &mut Acc, secret: *const u8) {
     unsafe {
         #[cfg(target_arch = "x86")]
@@ -423,7 +410,6 @@ fn scramble_acc_sse2(acc: &mut Acc, secret: *const u8) {
 }
 
 #[cfg(target_feature = "avx2")]
-#[inline(always)]
 fn scramble_acc_avx2(acc: &mut Acc, secret: *const u8) {
     unsafe {
         #[cfg(target_arch = "x86")]
@@ -452,7 +438,6 @@ fn scramble_acc_avx2(acc: &mut Acc, secret: *const u8) {
 }
 
 #[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
-#[inline(always)]
 fn scramble_acc_scalar(acc: &mut Acc, secret: *const u8) {
     for idx in 0..ACC_NB {
         let key = read_64le_unaligned(unsafe { secret.add(8 * idx) });
@@ -462,22 +447,20 @@ fn scramble_acc_scalar(acc: &mut Acc, secret: *const u8) {
     }
 }
 
-fn scramble_acc(acc: &mut Acc, secret: *const u8) {
-    #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
-    scramble_acc_wasm(acc, secret);
+#[cfg(all(target_family = "wasm", target_feature = "simd128"))]
+use scramble_acc_wasm as scramble_acc;
 
-    #[cfg(target_feature = "neon")]
-    scramble_acc_neon(acc, secret);
+#[cfg(target_feature = "neon")]
+use scramble_acc_neon as scramble_acc;
 
-    #[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
-    scramble_acc_sse2(acc, secret);
+#[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
+use scramble_acc_sse2 as scramble_acc;
 
-    #[cfg(target_feature = "avx2")]
-    scramble_acc_avx2(acc, secret);
+#[cfg(target_feature = "avx2")]
+use scramble_acc_avx2 as scramble_acc;
 
-    #[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
-    scramble_acc_scalar(acc, secret)
-}
+#[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
+use scramble_acc_scalar as scramble_acc;
 
 #[inline(always)]
 fn accumulate_loop(acc: &mut Acc, input: *const u8, secret: *const u8, nb_stripes: usize) {
