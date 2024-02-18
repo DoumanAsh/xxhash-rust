@@ -86,3 +86,18 @@ In order to  keep up with original implementation version I'm not planning to bu
 ## Comparison with twox-hash
 
 Refer to my [comment](https://github.com/DoumanAsh/xxhash-rust/issues/10#issuecomment-980488647)
+
+## aHash compares xxhash as slow
+
+Stateful `Xxh3`, while not as efficient as one-shot implementation, is by no means slow.
+
+`aHash` tests are constructed around std's inefficient `Hasher` interface that require to re-create hasher every time:
+https://github.com/tkaitchuck/aHash/blob/d9b5c3ff8ce4acae3d2de0de53f5f023818b29c0/compare/tests/compare.rs#L116-L119
+
+This is not intended way to use `Xxh3` hasher.
+
+Regardless whether it is intentional or not, it is false statement and you should not take it at face value.
+
+Using hasher correctly, or better oneshot version, will provide with results on par or even better with long inputs.
+
+However, it is true that `aHash` performs very well with short inputs.
