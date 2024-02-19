@@ -86,16 +86,23 @@ fn read_64le_unaligned(data: *const u8) -> u64 {
 }
 
 #[inline(always)]
-fn mix_two_accs(acc: &mut [u64], secret: *const u8) -> u64 {
-    mul128_fold64(acc[0] ^ read_64le_unaligned(secret),
-                  acc[1] ^ read_64le_unaligned(unsafe { secret.offset(8) }))
+fn mix_two_accs(acc: &mut Acc, offset: usize, secret: *const u8) -> u64 {
+    mul128_fold64(acc.0[offset] ^ read_64le_unaligned(secret),
+                  acc.0[offset + 1] ^ read_64le_unaligned(unsafe { secret.offset(8) }))
 }
 
 #[inline]
 fn merge_accs(acc: &mut Acc, secret: *const u8, mut result: u64) -> u64 {
-    for idx in 0..4 {
-        result = result.wrapping_add(mix_two_accs(&mut acc.0[idx * 2..], unsafe { secret.add(idx * 16) }));
+    macro_rules! mix_two_accs {
+        ($idx:literal) => {
+            result = result.wrapping_add(mix_two_accs(acc, $idx * 2, unsafe { secret.add($idx * 16) } ))
+        }
     }
+
+    mix_two_accs!(0);
+    mix_two_accs!(1);
+    mix_two_accs!(2);
+    mix_two_accs!(3);
 
     avalanche(result)
 }
@@ -1006,9 +1013,12 @@ fn xxh3_128_4to8(input: &[u8], mut seed: u64, secret: &[u8]) -> u128 {
 
 #[inline(always)]
 fn xxh3_128_1to3(input: &[u8], seed: u64, secret: &[u8]) -> u128 {
-    let c1 = input[0];
-    let c2 = input[input.len() >> 1];
-    let c3 = input[input.len() - 1];
+    let c1; let c2; let c3;
+    unsafe {
+        c1 = *input.get_unchecked(0);
+        c2 = *input.get_unchecked(input.len() >> 1);
+        c3 = *input.get_unchecked(input.len() - 1);
+    };
     let input_lo = (c1 as u32) << 16 | (c2 as u32) << 24 | c3 as u32 | (input.len() as u32) << 8;
     let input_hi = input_lo.swap_bytes().rotate_left(13);
 
