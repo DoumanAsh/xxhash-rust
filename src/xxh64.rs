@@ -79,40 +79,50 @@ fn finalize(mut input: u64, mut data: &[u8], is_aligned: bool) -> u64 {
     avalanche(input)
 }
 
+#[inline(always)]
+const fn init_v(seed: u64) -> (u64, u64, u64, u64) {
+    (
+        seed.wrapping_add(PRIME_1).wrapping_add(PRIME_2),
+        seed.wrapping_add(PRIME_2),
+        seed,
+        seed.wrapping_sub(PRIME_1),
+    )
+}
+
+macro_rules! round_loop {
+    ($input:ident => $($v:tt)+) => {unsafe {
+        $($v)+.0 = round($($v)+.0, read_64le_unaligned($input.as_ptr()));
+        $($v)+.1 = round($($v)+.1, read_64le_unaligned($input.as_ptr().add(8)));
+        $($v)+.2 = round($($v)+.2, read_64le_unaligned($input.as_ptr().add(16)));
+        $($v)+.3 = round($($v)+.3, read_64le_unaligned($input.as_ptr().add(24)));
+        $input = &$input[32..];
+    }}
+}
+
 ///Returns hash for the provided input.
 pub fn xxh64(mut input: &[u8], seed: u64) -> u64 {
     let input_len = input.len() as u64;
     let mut result;
 
     if input.len() >= CHUNK_SIZE {
-        let mut v1 = seed.wrapping_add(PRIME_1).wrapping_add(PRIME_2);
-        let mut v2 = seed.wrapping_add(PRIME_2);
-        let mut v3 = seed;
-        let mut v4 = seed.wrapping_sub(PRIME_1);
+        let mut v = init_v(seed);
 
         loop {
-            v1 = round(v1, read_64le_unaligned(input.as_ptr()));
-            input = &input[8..];
-            v2 = round(v2, read_64le_unaligned(input.as_ptr()));
-            input = &input[8..];
-            v3 = round(v3, read_64le_unaligned(input.as_ptr()));
-            input = &input[8..];
-            v4 = round(v4, read_64le_unaligned(input.as_ptr()));
-            input = &input[8..];
+            round_loop!(input => v);
 
             if input.len() < CHUNK_SIZE {
                 break;
             }
         }
 
-        result = v1.rotate_left(1).wrapping_add(v2.rotate_left(7))
-                                  .wrapping_add(v3.rotate_left(12))
-                                  .wrapping_add(v4.rotate_left(18));
+        result = v.0.rotate_left(1).wrapping_add(v.1.rotate_left(7))
+                                   .wrapping_add(v.2.rotate_left(12))
+                                   .wrapping_add(v.3.rotate_left(18));
 
-        result = merge_round(result, v1);
-        result = merge_round(result, v2);
-        result = merge_round(result, v3);
-        result = merge_round(result, v4);
+        result = merge_round(result, v.0);
+        result = merge_round(result, v.1);
+        result = merge_round(result, v.2);
+        result = merge_round(result, v.3);
     } else {
         result = seed.wrapping_add(PRIME_5)
     }
@@ -126,10 +136,7 @@ pub fn xxh64(mut input: &[u8], seed: u64) -> u64 {
 #[derive(Clone)]
 pub struct Xxh64 {
     total_len: u64,
-    v1: u64,
-    v2: u64,
-    v3: u64,
-    v4: u64,
+    v: (u64, u64, u64, u64),
     mem: [u64; 4],
     mem_size: u64,
 }
@@ -140,10 +147,7 @@ impl Xxh64 {
     pub const fn new(seed: u64) -> Self {
         Self {
             total_len: 0,
-            v1: seed.wrapping_add(PRIME_1).wrapping_add(PRIME_2),
-            v2: seed.wrapping_add(PRIME_2),
-            v3: seed,
-            v4: seed.wrapping_sub(PRIME_1),
+            v: init_v(seed),
             mem: [0, 0, 0, 0],
             mem_size: 0,
         }
@@ -170,10 +174,10 @@ impl Xxh64 {
                 ptr::copy_nonoverlapping(input.as_ptr(), (self.mem.as_mut_ptr() as *mut u8).add(self.mem_size as usize), fill_len)
             }
 
-            self.v1 = round(self.v1, self.mem[0].to_le());
-            self.v2 = round(self.v2, self.mem[1].to_le());
-            self.v3 = round(self.v3, self.mem[2].to_le());
-            self.v4 = round(self.v4, self.mem[3].to_le());
+            self.v.0 = round(self.v.0, self.mem[0].to_le());
+            self.v.1 = round(self.v.1, self.mem[1].to_le());
+            self.v.2 = round(self.v.2, self.mem[2].to_le());
+            self.v.3 = round(self.v.3, self.mem[3].to_le());
 
             input = &input[fill_len..];
             self.mem_size = 0;
@@ -184,14 +188,7 @@ impl Xxh64 {
             //So it is questionable whether we want to allocate local vars here.
             //Streaming version is likely to be used with relatively small chunks anyway.
             loop {
-                self.v1 = round(self.v1, read_64le_unaligned(input.as_ptr()));
-                input = &input[8..];
-                self.v2 = round(self.v2, read_64le_unaligned(input.as_ptr()));
-                input = &input[8..];
-                self.v3 = round(self.v3, read_64le_unaligned(input.as_ptr()));
-                input = &input[8..];
-                self.v4 = round(self.v4, read_64le_unaligned(input.as_ptr()));
-                input = &input[8..];
+                round_loop!(input => self.v);
 
                 if input.len() < CHUNK_SIZE {
                     break;
@@ -212,16 +209,16 @@ impl Xxh64 {
         let mut result;
 
         if self.total_len >= CHUNK_SIZE as u64 {
-            result = self.v1.rotate_left(1).wrapping_add(self.v2.rotate_left(7))
-                                           .wrapping_add(self.v3.rotate_left(12))
-                                           .wrapping_add(self.v4.rotate_left(18));
+            result = self.v.0.rotate_left(1).wrapping_add(self.v.1.rotate_left(7))
+                                            .wrapping_add(self.v.2.rotate_left(12))
+                                            .wrapping_add(self.v.3.rotate_left(18));
 
-            result = merge_round(result, self.v1);
-            result = merge_round(result, self.v2);
-            result = merge_round(result, self.v3);
-            result = merge_round(result, self.v4);
+            result = merge_round(result, self.v.0);
+            result = merge_round(result, self.v.1);
+            result = merge_round(result, self.v.2);
+            result = merge_round(result, self.v.3);
         } else {
-            result = self.v3.wrapping_add(PRIME_5)
+            result = self.v.2.wrapping_add(PRIME_5)
         }
 
         result = result.wrapping_add(self.total_len);
@@ -237,10 +234,7 @@ impl Xxh64 {
     ///Resets state with provided seed.
     pub fn reset(&mut self, seed: u64) {
         self.total_len = 0;
-        self.v1 = seed.wrapping_add(PRIME_1).wrapping_add(PRIME_2);
-        self.v2 = seed.wrapping_add(PRIME_2);
-        self.v3 = seed;
-        self.v4 = seed.wrapping_sub(PRIME_1);
+        self.v = init_v(seed);
         self.mem_size = 0;
     }
 }
