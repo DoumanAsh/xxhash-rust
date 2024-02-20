@@ -6,8 +6,8 @@ on:
       - master
     paths:
       - '.github/workflows/rust.yml'
-      - 'src/**.rs'
-      - 'tests/**'
+      - 'src/**/*.rs'
+      - 'tests/**/*.rs'
       - 'Cargo.toml'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -15,8 +15,8 @@ on:
       - '**'
     paths:
       - '.github/workflows/rust.yml'
-      - 'src/**.rs'
-      - 'tests/**'
+      - 'src/**/*.rs'
+      - 'tests/**/*'
       - 'Cargo.toml'
 
 jobs:
