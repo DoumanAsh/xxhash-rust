@@ -1,5 +1,8 @@
 name: Rust
 
+env:
+  min_rust_version: "1.36.0"
+
 on:
   push:
     branches:
@@ -20,6 +23,32 @@ on:
       - 'Cargo.toml'
 
 jobs:
+  min-rust-check:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust Unix
+      if: runner.os != 'Windows'
+      run: |
+        if rustup --version >/dev/null 2>&1; then
+            rustup install ${{ env.min_rust_version }}
+            rustup default ${{ env.min_rust_version }}
+        else
+            curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain ${{ env.min_rust_version }}
+            echo ::add-path::$HOME/.cargo/bin
+        fi
+
+    - name: Rust version
+      run: |
+        cargo --version
+        rustc --version
+
+    - name: Check
+      run: |
+        cargo check --features xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3
+
   full-test:
     runs-on: ubuntu-latest
     if: github.event.pull_request.draft == false
