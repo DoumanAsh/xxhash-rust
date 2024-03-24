@@ -14,7 +14,7 @@ fn finalize(mut input: u32, data: &[u8], is_aligned: bool) -> u32 {
                 let (chunks, remainder) = slice_aligned_chunks::<u32>(data);
                 for chunk in chunks {
                     input = input.wrapping_add(
-                        chunk.wrapping_mul(PRIME_3)
+                        chunk.to_le().wrapping_mul(PRIME_3)
                     );
                     input = input.rotate_left(17).wrapping_mul(PRIME_4);
                 }
@@ -25,7 +25,7 @@ fn finalize(mut input: u32, data: &[u8], is_aligned: bool) -> u32 {
                 let (chunks, remainder) = slice_chunks::<4>(data);
                 for chunk in chunks {
                     input = input.wrapping_add(
-                        u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]).wrapping_mul(PRIME_3)
+                        u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]).to_le().wrapping_mul(PRIME_3)
                     );
                     input = input.rotate_left(17).wrapping_mul(PRIME_4);
                 }
@@ -53,6 +53,17 @@ const fn init_v(seed: u32) -> (u32, u32, u32, u32) {
     )
 }
 
+macro_rules! round_loop {
+    ($input:ident => $($v:tt)+) => {
+        for chunk in $input {
+            $($v)+.0 = round($($v)+.0, u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]).to_le());
+            $($v)+.1 = round($($v)+.1, u32::from_ne_bytes([chunk[4], chunk[5], chunk[6], chunk[7]]).to_le());
+            $($v)+.2 = round($($v)+.2, u32::from_ne_bytes([chunk[8], chunk[9], chunk[10], chunk[11]]).to_le());
+            $($v)+.3 = round($($v)+.3, u32::from_ne_bytes([chunk[12], chunk[13], chunk[14], chunk[15]]).to_le());
+        }
+    }
+}
+
 ///Returns hash for the provided input
 pub fn xxh32(mut input: &[u8], seed: u32) -> u32 {
     let mut result = input.len() as u32;
@@ -62,12 +73,7 @@ pub fn xxh32(mut input: &[u8], seed: u32) -> u32 {
 
         let (chunks, remainder) = slice_chunks::<CHUNK_SIZE>(input);
 
-        for chunk in chunks {
-            v.0 = round(v.0, u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
-            v.1 = round(v.1, u32::from_ne_bytes([chunk[4], chunk[5], chunk[6], chunk[7]]));
-            v.2 = round(v.2, u32::from_ne_bytes([chunk[8], chunk[9], chunk[10], chunk[11]]));
-            v.3 = round(v.3, u32::from_ne_bytes([chunk[12], chunk[13], chunk[14], chunk[15]]));
-        }
+        round_loop!(chunks => v);
         input = remainder;
 
         result = result.wrapping_add(
@@ -141,12 +147,7 @@ impl Xxh32 {
         }
 
         let (chunks, remainder) = slice_chunks::<CHUNK_SIZE>(input);
-        for chunk in chunks {
-            self.v.0 = round(self.v.0, u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
-            self.v.1 = round(self.v.1, u32::from_ne_bytes([chunk[4], chunk[5], chunk[6], chunk[7]]));
-            self.v.2 = round(self.v.2, u32::from_ne_bytes([chunk[8], chunk[9], chunk[10], chunk[11]]));
-            self.v.3 = round(self.v.3, u32::from_ne_bytes([chunk[12], chunk[13], chunk[14], chunk[15]]));
-        }
+        round_loop!(chunks => self.v);
 
         if remainder.len() > 0 {
             unsafe {

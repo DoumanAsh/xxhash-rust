@@ -13,13 +13,13 @@ fn finalize(mut input: u64, data: &[u8], is_aligned: bool) -> u64 {
             true => {
                 let (chunks, remainder) = slice_aligned_chunks::<u64>(data);
                 for chunk in chunks {
-                    input ^= round(0, *chunk);
+                    input ^= round(0, chunk.to_le());
                     input = input.rotate_left(27).wrapping_mul(PRIME_1).wrapping_add(PRIME_4)
                 }
 
                 let (chunks, remainder) = slice_aligned_chunks::<u32>(remainder);
                 for chunk in chunks {
-                    input ^= (*chunk as u64).wrapping_mul(PRIME_1);
+                    input ^= (chunk.to_le() as u64).wrapping_mul(PRIME_1);
                     input = input.rotate_left(23).wrapping_mul(PRIME_2).wrapping_add(PRIME_3);
                 }
                 remainder
@@ -27,13 +27,13 @@ fn finalize(mut input: u64, data: &[u8], is_aligned: bool) -> u64 {
             false => {
                 let (chunks, remainder) = slice_chunks::<8>(data);
                 for chunk in chunks {
-                    input ^= round(0, u64::from_ne_bytes(*chunk));
+                    input ^= round(0, u64::from_ne_bytes(*chunk).to_le());
                     input = input.rotate_left(27).wrapping_mul(PRIME_1).wrapping_add(PRIME_4)
                 }
 
                 let (chunks, remainder) = slice_chunks::<4>(remainder);
                 for chunk in chunks {
-                    input ^= (u32::from_ne_bytes(*chunk) as u64).wrapping_mul(PRIME_1);
+                    input ^= (u32::from_ne_bytes(*chunk).to_le() as u64).wrapping_mul(PRIME_1);
                     input = input.rotate_left(23).wrapping_mul(PRIME_2).wrapping_add(PRIME_3);
                 }
                 remainder
@@ -62,10 +62,10 @@ const fn init_v(seed: u64) -> (u64, u64, u64, u64) {
 macro_rules! round_loop {
     ($input:ident => $($v:tt)+) => {
         for chunk in $input {
-            $($v)+.0 = round($($v)+.0, u64::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7]]));
-            $($v)+.1 = round($($v)+.1, u64::from_ne_bytes([chunk[8], chunk[9], chunk[10], chunk[11], chunk[12], chunk[13], chunk[14], chunk[15]]));
-            $($v)+.2 = round($($v)+.2, u64::from_ne_bytes([chunk[16], chunk[17], chunk[18], chunk[19], chunk[20], chunk[21], chunk[22], chunk[23]]));
-            $($v)+.3 = round($($v)+.3, u64::from_ne_bytes([chunk[24], chunk[25], chunk[26], chunk[27], chunk[28], chunk[29], chunk[30], chunk[31]]));
+            $($v)+.0 = round($($v)+.0, u64::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7]]).to_le());
+            $($v)+.1 = round($($v)+.1, u64::from_ne_bytes([chunk[8], chunk[9], chunk[10], chunk[11], chunk[12], chunk[13], chunk[14], chunk[15]]).to_le());
+            $($v)+.2 = round($($v)+.2, u64::from_ne_bytes([chunk[16], chunk[17], chunk[18], chunk[19], chunk[20], chunk[21], chunk[22], chunk[23]]).to_le());
+            $($v)+.3 = round($($v)+.3, u64::from_ne_bytes([chunk[24], chunk[25], chunk[26], chunk[27], chunk[28], chunk[29], chunk[30], chunk[31]]).to_le());
         }
     }
 }
