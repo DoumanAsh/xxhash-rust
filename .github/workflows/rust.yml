@@ -1,7 +1,7 @@
 name: Rust
 
 env:
-  min_rust_version: "1.36.0"
+  min_rust_version: "1.64.0"
 
 on:
   push:
