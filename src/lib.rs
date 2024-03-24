@@ -77,6 +77,8 @@
 #![warn(missing_docs)]
 #![cfg_attr(feature = "cargo-clippy", allow(clippy::style))]
 
+mod utils;
+
 #[cfg(any(feature = "xxh32", feature = "const_xxh32", feature = "xxh3", feature = "const_xxh3"))]
 mod xxh32_common;
 #[cfg(feature = "xxh32")]
