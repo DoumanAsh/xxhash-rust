@@ -1,31 +1,26 @@
 //!Const eval friendly xxh32 implementation.
 
-use core::mem;
-
 use crate::xxh32_common::*;
+use crate::utils::slice_chunks;
 
-#[inline(always)]
-const fn read_u32(input: &[u8], cursor: usize) -> u32 {
-    input[cursor] as u32 | (input[cursor + 1] as u32) << 8 | (input[cursor + 2] as u32) << 16 | (input[cursor + 3] as u32) << 24
-}
+const fn finalize(mut input: u32, data: &[u8]) -> u32 {
+    let (chunks, remainder) = slice_chunks::<4>(data);
 
-const fn finalize(mut input: u32, data: &[u8], mut cursor: usize) -> u32 {
-    let mut len = data.len() - cursor;
-
-    while len >= 4 {
+    let mut idx = 0;
+    while idx < chunks.len() {
+        let chunk = &chunks[idx];
         input = input.wrapping_add(
-            read_u32(data, cursor).wrapping_mul(PRIME_3)
+            u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]).to_le().wrapping_mul(PRIME_3)
         );
-        cursor += mem::size_of::<u32>();
-        len -= mem::size_of::<u32>();
         input = input.rotate_left(17).wrapping_mul(PRIME_4);
+        idx += 1;
     }
 
-    while len > 0 {
-        input = input.wrapping_add((data[cursor] as u32).wrapping_mul(PRIME_5));
-        cursor += mem::size_of::<u8>();
-        len -= mem::size_of::<u8>();
+    idx = 0;
+    while idx < remainder.len() {
+        input = input.wrapping_add((remainder[idx] as u32).wrapping_mul(PRIME_5));
         input = input.rotate_left(11).wrapping_mul(PRIME_1);
+        idx += 1;
     }
 
     avalanche(input)
@@ -34,7 +29,6 @@ const fn finalize(mut input: u32, data: &[u8], mut cursor: usize) -> u32 {
 ///Const variant of xxh32 hashing
 pub const fn xxh32(input: &[u8], seed: u32) -> u32 {
     let mut result = input.len() as u32;
-    let mut cursor = 0;
 
     if input.len() >= CHUNK_SIZE {
         let mut v1 = seed.wrapping_add(PRIME_1).wrapping_add(PRIME_2);
@@ -42,19 +36,17 @@ pub const fn xxh32(input: &[u8], seed: u32) -> u32 {
         let mut v3 = seed;
         let mut v4 = seed.wrapping_sub(PRIME_1);
 
-        loop {
-            v1 = round(v1, read_u32(input, cursor));
-            cursor += mem::size_of::<u32>();
-            v2 = round(v2, read_u32(input, cursor));
-            cursor += mem::size_of::<u32>();
-            v3 = round(v3, read_u32(input, cursor));
-            cursor += mem::size_of::<u32>();
-            v4 = round(v4, read_u32(input, cursor));
-            cursor += mem::size_of::<u32>();
+        let (chunks, remainder) = slice_chunks::<CHUNK_SIZE>(input);
 
-            if (input.len() - cursor) < CHUNK_SIZE {
-                break;
-            }
+        let mut idx = 0;
+        while idx < chunks.len() {
+            let chunk = &chunks[idx];
+            v1 = round(v1, u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]).to_le());
+            v2 = round(v2, u32::from_ne_bytes([chunk[4], chunk[5], chunk[6], chunk[7]]).to_le());
+            v3 = round(v3, u32::from_ne_bytes([chunk[8], chunk[9], chunk[10], chunk[11]]).to_le());
+            v4 = round(v4, u32::from_ne_bytes([chunk[12], chunk[13], chunk[14], chunk[15]]).to_le());
+
+            idx += 1;
         }
 
         result = result.wrapping_add(
@@ -66,9 +58,9 @@ pub const fn xxh32(input: &[u8], seed: u32) -> u32 {
                 )
             )
         );
+        finalize(result, remainder)
     } else {
         result = result.wrapping_add(seed.wrapping_add(PRIME_5));
+        finalize(result, input)
     }
-
-    finalize(result, input, cursor)
 }
