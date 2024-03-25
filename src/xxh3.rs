@@ -204,7 +204,6 @@ fn accumulate_512_wasm(acc: &mut Acc, input: *const u8, secret: *const u8) {
 macro_rules! vld1q_u8 {
     ($ptr:expr) => {
         core::arch::aarch64::vld1q_u8($ptr)
-
     }
 }
 
