@@ -1,4 +1,6 @@
-use core::{mem, slice};
+//! Better byte working utilities
+
+use core::{mem, slice, ptr};
 
 ///Splits slice into tuple as follows:
 ///
@@ -32,4 +34,26 @@ pub const fn slice_aligned_chunks<T: Copy>(input: &[u8]) -> (&[T], &[u8]) {
     };
 
     (chunks, rest)
+}
+
+pub struct Buffer {
+    pub ptr: *mut u8,
+    pub len: usize,
+    pub offset: usize,
+}
+
+impl Buffer {
+    #[inline(always)]
+    pub const fn copy_from_slice(&self, src: &[u8]) {
+        self.copy_from_slice_by_size(src, src.len())
+    }
+
+    #[inline(always)]
+    pub const fn copy_from_slice_by_size(&self, src: &[u8], len: usize) {
+        debug_assert!(self.len.saturating_sub(self.offset) >= len);
+
+        unsafe {
+            ptr::copy_nonoverlapping(src.as_ptr(), self.ptr.add(self.offset), len);
+        }
+    }
 }
