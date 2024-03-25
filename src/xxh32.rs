@@ -2,48 +2,49 @@
 //!
 //!Written using C implementation as reference.
 
-use core::{ptr, slice};
+use core::{mem, slice};
 
+use crate::utils::{Buffer, slice_chunks, slice_aligned_chunks};
 use crate::xxh32_common::*;
 
-#[inline(always)]
-fn read_le_unaligned(data: *const u8) -> u32 {
-    debug_assert!(!data.is_null());
+const fn finalize(mut input: u32, data: &[u8], is_aligned: bool) -> u32 {
+    let mut idx = 0;
+    let remainder = {
+        match is_aligned {
+            true => {
+                let (chunks, remainder) = slice_aligned_chunks::<u32>(data);
+                while idx < chunks.len() {
+                    let chunk = &chunks[idx];
+                    input = input.wrapping_add(
+                        chunk.to_le().wrapping_mul(PRIME_3)
+                    );
+                    input = input.rotate_left(17).wrapping_mul(PRIME_4);
+                    idx += 1;
+                }
 
-    unsafe {
-        ptr::read_unaligned(data as *const u32).to_le()
-    }
-}
+                remainder
+            },
+            false => {
+                let (chunks, remainder) = slice_chunks::<4>(data);
+                while idx < chunks.len() {
+                    let chunk = &chunks[idx];
+                    input = input.wrapping_add(
+                        u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]).to_le().wrapping_mul(PRIME_3)
+                    );
+                    input = input.rotate_left(17).wrapping_mul(PRIME_4);
+                    idx += 1;
+                }
 
-#[inline(always)]
-fn read_le_aligned(data: *const u8) -> u32 {
-    debug_assert!(!data.is_null());
+                remainder
+            }
+        }
+    };
 
-    unsafe {
-        ptr::read(data as *const u32).to_le()
-    }
-}
-
-#[inline(always)]
-fn read_le_is_align(data: *const u8, is_aligned: bool) -> u32 {
-    match is_aligned {
-        true => read_le_aligned(data),
-        false => read_le_unaligned(data)
-    }
-}
-
-fn finalize(mut input: u32, mut data: &[u8], is_aligned: bool) -> u32 {
-    while data.len() >= 4 {
-        input = input.wrapping_add(
-            read_le_is_align(data.as_ptr(), is_aligned).wrapping_mul(PRIME_3)
-        );
-        data = &data[4..];
-        input = input.rotate_left(17).wrapping_mul(PRIME_4);
-    }
-
-    for byte in data.iter() {
-        input = input.wrapping_add((*byte as u32).wrapping_mul(PRIME_5));
+    idx = 0;
+    while idx < remainder.len() {
+        input = input.wrapping_add((remainder[idx] as u32).wrapping_mul(PRIME_5));
         input = input.rotate_left(11).wrapping_mul(PRIME_1);
+        idx += 1;
     }
 
     avalanche(input)
@@ -60,28 +61,30 @@ const fn init_v(seed: u32) -> (u32, u32, u32, u32) {
 }
 
 macro_rules! round_loop {
-    ($input:ident => $($v:tt)+) => {unsafe {
-        $($v)+.0 = round($($v)+.0, read_le_unaligned($input.as_ptr()));
-        $($v)+.1 = round($($v)+.1, read_le_unaligned($input.as_ptr().add(4)));
-        $($v)+.2 = round($($v)+.2, read_le_unaligned($input.as_ptr().add(8)));
-        $($v)+.3 = round($($v)+.3, read_le_unaligned($input.as_ptr().add(12)));
-        $input = &$input[16..];
-    }}
+    ($input:ident => $($v:tt)+) => {
+        let mut idx = 0;
+        while idx < $input.len() {
+            let chunk = &$input[idx];
+            $($v)+.0 = round($($v)+.0, u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]).to_le());
+            $($v)+.1 = round($($v)+.1, u32::from_ne_bytes([chunk[4], chunk[5], chunk[6], chunk[7]]).to_le());
+            $($v)+.2 = round($($v)+.2, u32::from_ne_bytes([chunk[8], chunk[9], chunk[10], chunk[11]]).to_le());
+            $($v)+.3 = round($($v)+.3, u32::from_ne_bytes([chunk[12], chunk[13], chunk[14], chunk[15]]).to_le());
+            idx += 1;
+        }
+    }
 }
 
 ///Returns hash for the provided input
-pub fn xxh32(mut input: &[u8], seed: u32) -> u32 {
+pub const fn xxh32(mut input: &[u8], seed: u32) -> u32 {
     let mut result = input.len() as u32;
 
     if input.len() >= CHUNK_SIZE {
         let mut v = init_v(seed);
 
-        loop {
-            round_loop!(input => v);
-            if input.len() < CHUNK_SIZE {
-                break;
-            }
-        }
+        let (chunks, remainder) = slice_chunks::<CHUNK_SIZE>(input);
+
+        round_loop!(chunks => v);
+        input = remainder;
 
         result = result.wrapping_add(
             v.0.rotate_left(1).wrapping_add(
@@ -128,9 +131,11 @@ impl Xxh32 {
         self.is_large_len |= (input.len() as u32 >= CHUNK_SIZE as u32) | (self.total_len >= CHUNK_SIZE as u32);
 
         if (self.mem_size + input.len() as u32) < CHUNK_SIZE as u32 {
-            unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr(), (self.mem.as_mut_ptr() as *mut u8).offset(self.mem_size as isize), input.len())
-            }
+            Buffer {
+                ptr: self.mem.as_mut_ptr() as *mut u8,
+                len: mem::size_of_val(&self.mem),
+                offset: self.mem_size as _,
+            }.copy_from_slice(input);
             self.mem_size += input.len() as u32;
             return
         }
@@ -140,9 +145,11 @@ impl Xxh32 {
             //hence fill_len >= input.len()
             let fill_len = CHUNK_SIZE - self.mem_size as usize;
 
-            unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr(), (self.mem.as_mut_ptr() as *mut u8).offset(self.mem_size as isize), fill_len)
-            }
+            Buffer {
+                ptr: self.mem.as_mut_ptr() as *mut u8,
+                len: mem::size_of_val(&self.mem),
+                offset: self.mem_size as _,
+            }.copy_from_slice_by_size(input, fill_len);
 
             self.v.0 = round(self.v.0, self.mem[0].to_le());
             self.v.1 = round(self.v.1, self.mem[1].to_le());
@@ -153,24 +160,16 @@ impl Xxh32 {
             self.mem_size = 0;
         }
 
-        if input.len() >= CHUNK_SIZE {
-            //In general this loop is not that long running on small input
-            //So it is questionable whether we want to allocate local vars here.
-            //Streaming version is likely to be used with relatively small chunks anyway.
-            loop {
-                round_loop!(input => self.v);
+        let (chunks, remainder) = slice_chunks::<CHUNK_SIZE>(input);
+        round_loop!(chunks => self.v);
 
-                if input.len() < CHUNK_SIZE {
-                    break;
-                }
-            }
-        }
-
-        if input.len() > 0 {
-            unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr(), self.mem.as_mut_ptr() as *mut u8, input.len())
-            }
-            self.mem_size = input.len() as u32;
+        if remainder.len() > 0 {
+            Buffer {
+                ptr: self.mem.as_mut_ptr() as *mut u8,
+                len: mem::size_of_val(&self.mem),
+                offset: 0
+            }.copy_from_slice(remainder);
+            self.mem_size = remainder.len() as u32;
         }
     }
 
