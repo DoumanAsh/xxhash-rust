@@ -8,6 +8,7 @@ use core::{ptr, mem};
 use crate::xxh32_common as xxh32;
 use crate::xxh64_common as xxh64;
 use crate::xxh3_common::*;
+use crate::utils::{Buffer, slice_chunks};
 
 // Code is as close to original C implementation as possible
 // It does make it look ugly, but it is fast and easy to update once xxhash gets new version.
@@ -131,16 +132,27 @@ fn mix32_b(lo: &mut u64, hi: &mut u64, input_1: *const u8, input_2: *const u8, s
 fn custom_default_secret(seed: u64) -> [u8; DEFAULT_SECRET_SIZE] {
     let mut result = mem::MaybeUninit::<[u8; DEFAULT_SECRET_SIZE]>::uninit();
 
-    let nb_rounds = DEFAULT_SECRET_SIZE / 16;
+    let (rounds, remainder) = slice_chunks::<16>(&DEFAULT_SECRET);
+    debug_assert!(remainder.is_empty());
 
-    for idx in 0..nb_rounds {
-        let low = read_64le_unaligned(slice_offset_ptr(&DEFAULT_SECRET, idx * 16)).wrapping_add(seed);
-        let hi = read_64le_unaligned(slice_offset_ptr(&DEFAULT_SECRET, idx * 16 + 8)).wrapping_sub(seed);
+    let mut idx = 0;
+    while idx < rounds.len() {
+        let round = &rounds[idx];
+        let low = u64::from_ne_bytes([round[0], round[1], round[2], round[3], round[4], round[5], round[6], round[7]]).to_le().wrapping_add(seed).to_le_bytes();
+        let hi = u64::from_ne_bytes([round[8], round[9], round[10], round[11], round[12], round[13], round[14], round[15]]).to_le().wrapping_sub(seed).to_le_bytes();
 
-        unsafe {
-            ptr::copy_nonoverlapping(low.to_le_bytes().as_ptr(), (result.as_mut_ptr() as *mut u8).add(idx * 16), mem::size_of::<u64>());
-            ptr::copy_nonoverlapping(hi.to_le_bytes().as_ptr(), (result.as_mut_ptr() as *mut u8).add(idx * 16 + 8), mem::size_of::<u64>());
-        }
+        Buffer {
+            ptr: result.as_mut_ptr() as *mut u8,
+            len: DEFAULT_SECRET_SIZE,
+            offset: idx * 16,
+        }.copy_from_slice(&low);
+        Buffer {
+            ptr: result.as_mut_ptr() as *mut u8,
+            len: DEFAULT_SECRET_SIZE,
+            offset: idx * 16 + 8,
+        }.copy_from_slice(&hi);
+
+        idx += 1;
     }
 
     unsafe {
@@ -759,9 +771,13 @@ impl Xxh3 {
         self.total_len = self.total_len.wrapping_add(input_len as u64);
 
         if (input_len + self.buffered_size as usize) <= INTERNAL_BUFFER_SIZE {
-            unsafe {
-                ptr::copy_nonoverlapping(input_ptr, (self.buffer.0.as_mut_ptr()).offset(self.buffered_size as isize), input_len)
-            }
+
+            Buffer {
+                ptr: self.buffer.0.as_mut_ptr(),
+                len: self.buffer.0.len(),
+                offset: self.buffered_size as _
+            }.copy_from_slice(&input);
+
             self.buffered_size += input_len as u16;
             return;
         }

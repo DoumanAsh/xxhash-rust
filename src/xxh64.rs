@@ -2,9 +2,9 @@
 //!
 //!Written using C implementation as reference.
 
-use core::{ptr, slice};
+use core::{mem, slice};
 
-use crate::utils::{slice_chunks, slice_aligned_chunks};
+use crate::utils::{Buffer, slice_chunks, slice_aligned_chunks};
 use crate::xxh64_common::*;
 
 fn finalize(mut input: u64, data: &[u8], is_aligned: bool) -> u64 {
@@ -126,9 +126,12 @@ impl Xxh64 {
         self.total_len = self.total_len.wrapping_add(input.len() as u64);
 
         if (self.mem_size as usize + input.len()) < CHUNK_SIZE {
-            unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr(), (self.mem.as_mut_ptr() as *mut u8).add(self.mem_size as usize), input.len())
-            }
+            Buffer {
+                ptr: self.mem.as_mut_ptr() as *mut u8,
+                len: mem::size_of_val(&self.mem),
+                offset: self.mem_size as _,
+            }.copy_from_slice(input);
+
             self.mem_size += input.len() as u64;
             return
         }
@@ -138,9 +141,11 @@ impl Xxh64 {
             //hence fill_len >= input.len()
             let fill_len = CHUNK_SIZE - self.mem_size as usize;
 
-            unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr(), (self.mem.as_mut_ptr() as *mut u8).add(self.mem_size as usize), fill_len)
-            }
+            Buffer {
+                ptr: self.mem.as_mut_ptr() as *mut u8,
+                len: mem::size_of_val(&self.mem),
+                offset: self.mem_size as _,
+            }.copy_from_slice_by_size(input, fill_len);
 
             self.v.0 = round(self.v.0, self.mem[0].to_le());
             self.v.1 = round(self.v.1, self.mem[1].to_le());
@@ -155,9 +160,11 @@ impl Xxh64 {
         round_loop!(chunks => self.v);
 
         if remainder.len() > 0 {
-            unsafe {
-                ptr::copy_nonoverlapping(remainder.as_ptr(), self.mem.as_mut_ptr() as *mut u8, remainder.len())
-            }
+            Buffer {
+                ptr: self.mem.as_mut_ptr() as *mut u8,
+                len: mem::size_of_val(&self.mem),
+                offset: 0
+            }.copy_from_slice(remainder);
             self.mem_size = remainder.len() as u64;
         }
     }

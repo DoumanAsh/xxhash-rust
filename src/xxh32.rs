@@ -2,9 +2,9 @@
 //!
 //!Written using C implementation as reference.
 
-use core::{ptr, slice};
+use core::{mem, slice};
 
-use crate::utils::{slice_chunks, slice_aligned_chunks};
+use crate::utils::{Buffer, slice_chunks, slice_aligned_chunks};
 use crate::xxh32_common::*;
 
 fn finalize(mut input: u32, data: &[u8], is_aligned: bool) -> u32 {
@@ -121,9 +121,11 @@ impl Xxh32 {
         self.is_large_len |= (input.len() as u32 >= CHUNK_SIZE as u32) | (self.total_len >= CHUNK_SIZE as u32);
 
         if (self.mem_size + input.len() as u32) < CHUNK_SIZE as u32 {
-            unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr(), (self.mem.as_mut_ptr() as *mut u8).offset(self.mem_size as isize), input.len())
-            }
+            Buffer {
+                ptr: self.mem.as_mut_ptr() as *mut u8,
+                len: mem::size_of_val(&self.mem),
+                offset: self.mem_size as _,
+            }.copy_from_slice(input);
             self.mem_size += input.len() as u32;
             return
         }
@@ -133,9 +135,11 @@ impl Xxh32 {
             //hence fill_len >= input.len()
             let fill_len = CHUNK_SIZE - self.mem_size as usize;
 
-            unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr(), (self.mem.as_mut_ptr() as *mut u8).offset(self.mem_size as isize), fill_len)
-            }
+            Buffer {
+                ptr: self.mem.as_mut_ptr() as *mut u8,
+                len: mem::size_of_val(&self.mem),
+                offset: self.mem_size as _,
+            }.copy_from_slice_by_size(input, fill_len);
 
             self.v.0 = round(self.v.0, self.mem[0].to_le());
             self.v.1 = round(self.v.1, self.mem[1].to_le());
@@ -150,9 +154,11 @@ impl Xxh32 {
         round_loop!(chunks => self.v);
 
         if remainder.len() > 0 {
-            unsafe {
-                ptr::copy_nonoverlapping(remainder.as_ptr(), self.mem.as_mut_ptr() as *mut u8, remainder.len())
-            }
+            Buffer {
+                ptr: self.mem.as_mut_ptr() as *mut u8,
+                len: mem::size_of_val(&self.mem),
+                offset: 0
+            }.copy_from_slice(remainder);
             self.mem_size = remainder.len() as u32;
         }
     }
