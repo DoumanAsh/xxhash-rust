@@ -246,7 +246,7 @@ fn accumulate_512_neon(acc: &mut Acc, input: *const u8, secret: *const u8) {
             #[cfg(target_arch = "aarch64")]
             let sum_2 = vmlal_high_u32(data_swap_2, data_key_lo, data_key_hi);
             #[cfg(target_arch = "arm")]
-            let sum_1 = vmlal_u32(data_swap_2, vget_high_u32(data_key_lo), vget_high_u32(data_key_hi));
+            let sum_2 = vmlal_u32(data_swap_2, vget_high_u32(data_key_lo), vget_high_u32(data_key_hi));
 
             xacc.add(idx).write(vaddq_u64(*xacc.add(idx), sum_1));
             xacc.add(idx.wrapping_add(1)).write(vaddq_u64(*xacc.add(idx.wrapping_add(1)), sum_2));
