@@ -8,6 +8,7 @@ use core::{ptr, mem};
 use crate::xxh32_common as xxh32;
 use crate::xxh64_common as xxh64;
 use crate::xxh3_common::*;
+use crate::utils::{Buffer, slice_chunks, slice_aligned_chunks, get_aligned_chunk, get_aligned_chunk_ref};
 
 // Code is as close to original C implementation as possible
 // It does make it look ugly, but it is fast and easy to update once xxhash gets new version.
@@ -119,6 +120,17 @@ fn mix16_b(input: *const u8, secret: *const u8, seed: u64) -> u64 {
 }
 
 #[inline]
+fn mix16_b2(input: &[[u8; 8]; 2], secret: &[[u8; 8]; 2], seed: u64) -> u64 {
+    let mut input_lo = u64::from_ne_bytes(input[0]).to_le();
+    let mut input_hi = u64::from_ne_bytes(input[1]).to_le();
+
+    input_lo ^= u64::from_ne_bytes(secret[0]).to_le().wrapping_add(seed);
+    input_hi ^= u64::from_ne_bytes(secret[1]).to_le().wrapping_sub(seed);
+
+    mul128_fold64(input_lo, input_hi)
+}
+
+#[inline]
 fn mix32_b(lo: &mut u64, hi: &mut u64, input_1: *const u8, input_2: *const u8, secret: *const u8, seed: u64) {
     *lo = lo.wrapping_add(mix16_b(input_1, secret, seed));
     *lo ^= read_64le_unaligned(input_2).wrapping_add(read_64le_unaligned(unsafe { input_2.offset(8) }));
@@ -131,16 +143,27 @@ fn mix32_b(lo: &mut u64, hi: &mut u64, input_1: *const u8, input_2: *const u8, s
 fn custom_default_secret(seed: u64) -> [u8; DEFAULT_SECRET_SIZE] {
     let mut result = mem::MaybeUninit::<[u8; DEFAULT_SECRET_SIZE]>::uninit();
 
-    let nb_rounds = DEFAULT_SECRET_SIZE / 16;
+    let (rounds, remainder) = slice_chunks::<16>(&DEFAULT_SECRET);
+    debug_assert!(remainder.is_empty());
 
-    for idx in 0..nb_rounds {
-        let low = read_64le_unaligned(slice_offset_ptr(&DEFAULT_SECRET, idx * 16)).wrapping_add(seed);
-        let hi = read_64le_unaligned(slice_offset_ptr(&DEFAULT_SECRET, idx * 16 + 8)).wrapping_sub(seed);
+    let mut idx = 0;
+    while idx < rounds.len() {
+        let round = &rounds[idx];
+        let low = u64::from_ne_bytes([round[0], round[1], round[2], round[3], round[4], round[5], round[6], round[7]]).to_le().wrapping_add(seed).to_le_bytes();
+        let hi = u64::from_ne_bytes([round[8], round[9], round[10], round[11], round[12], round[13], round[14], round[15]]).to_le().wrapping_sub(seed).to_le_bytes();
 
-        unsafe {
-            ptr::copy_nonoverlapping(low.to_le_bytes().as_ptr(), (result.as_mut_ptr() as *mut u8).add(idx * 16), mem::size_of::<u64>());
-            ptr::copy_nonoverlapping(hi.to_le_bytes().as_ptr(), (result.as_mut_ptr() as *mut u8).add(idx * 16 + 8), mem::size_of::<u64>());
-        }
+        Buffer {
+            ptr: result.as_mut_ptr() as *mut u8,
+            len: DEFAULT_SECRET_SIZE,
+            offset: idx * 16,
+        }.copy_from_slice(&low);
+        Buffer {
+            ptr: result.as_mut_ptr() as *mut u8,
+            len: DEFAULT_SECRET_SIZE,
+            offset: idx * 16 + 8,
+        }.copy_from_slice(&hi);
+
+        idx += 1;
     }
 
     unsafe {
@@ -192,7 +215,6 @@ fn accumulate_512_wasm(acc: &mut Acc, input: *const u8, secret: *const u8) {
 macro_rules! vld1q_u8 {
     ($ptr:expr) => {
         core::arch::aarch64::vld1q_u8($ptr)
-
     }
 }
 
@@ -565,21 +587,52 @@ fn xxh3_64_7to128(input: &[u8], seed: u64, secret: &[u8]) -> u64 {
     if input.len() > 32 {
         if input.len() > 64 {
             if input.len() > 96 {
-                acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, 48), slice_offset_ptr(secret, 96), seed));
-                acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, input.len()-64), slice_offset_ptr(secret, 112), seed));
+                acc = acc.wrapping_add(mix16_b2(
+                    get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, 48),
+                    get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 96),
+                    seed
+                ));
+                acc = acc.wrapping_add(mix16_b2(
+                    get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, input.len() - 64),
+                    get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 112),
+                    seed
+                ));
             }
 
-            acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, 32), slice_offset_ptr(secret, 64), seed));
-            acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, input.len()-48), slice_offset_ptr(secret, 80), seed));
+            acc = acc.wrapping_add(mix16_b2(
+                get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, 32),
+                get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 64),
+                seed
+            ));
+            acc = acc.wrapping_add(mix16_b2(
+                get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, input.len() - 48),
+                get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 80),
+                seed
+            ));
         }
 
-        acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, 16), slice_offset_ptr(secret, 32), seed));
-        acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, input.len()-32), slice_offset_ptr(secret, 48), seed));
+        acc = acc.wrapping_add(mix16_b2(
+            get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, 16),
+            get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 32),
+            seed
+        ));
+        acc = acc.wrapping_add(mix16_b2(
+            get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, input.len() - 32),
+            get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 48),
+            seed
+        ));
     }
 
-    acc = acc.wrapping_add(mix16_b(input.as_ptr(), secret.as_ptr(), seed));
-    acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, input.len()-16), slice_offset_ptr(secret, 16), seed));
-
+    acc = acc.wrapping_add(mix16_b2(
+        get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, 0),
+        get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 0),
+        seed
+    ));
+    acc = acc.wrapping_add(mix16_b2(
+        get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, input.len() - 16),
+        get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 16),
+        seed
+    ));
     avalanche(acc)
 }
 
@@ -591,16 +644,35 @@ fn xxh3_64_129to240(input: &[u8], seed: u64, secret: &[u8]) -> u64 {
     let mut acc = (input.len() as u64).wrapping_mul(xxh64::PRIME_1);
     let nb_rounds = input.len() / 16;
 
+    let (secret_chunks, _) = slice_aligned_chunks::<[[u8; 8]; 2]>(secret);
+    let (input_chunks, _) = slice_aligned_chunks::<[[u8; 8]; 2]>(input);
+
+    debug_assert!(secret_chunks.len() >= 8);
+    debug_assert!(input_chunks.len() >= 8);
+
     for idx in 0..8 {
-        acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, 16*idx), slice_offset_ptr(secret, 16*idx), seed));
+        acc = acc.wrapping_add(mix16_b2(&input_chunks[idx], &secret_chunks[idx], seed));
     }
     acc = avalanche(acc);
 
+    debug_assert!(input_chunks.len() == nb_rounds);
     for idx in 8..nb_rounds {
-        acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, 16*idx), slice_offset_ptr(secret, 16*(idx-8) + START_OFFSET), seed));
+        acc = acc.wrapping_add(
+            mix16_b2(
+                &input_chunks[idx],
+                get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 16*(idx-8)+START_OFFSET),
+                seed
+            )
+        );
     }
 
-    acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, input.len()-16), slice_offset_ptr(secret, SECRET_SIZE_MIN-LAST_OFFSET), seed));
+    acc = acc.wrapping_add(
+        mix16_b2(
+            get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, input.len()-16),
+            get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, SECRET_SIZE_MIN-LAST_OFFSET),
+            seed
+        )
+    );
 
     avalanche(acc)
 }
@@ -759,9 +831,13 @@ impl Xxh3 {
         self.total_len = self.total_len.wrapping_add(input_len as u64);
 
         if (input_len + self.buffered_size as usize) <= INTERNAL_BUFFER_SIZE {
-            unsafe {
-                ptr::copy_nonoverlapping(input_ptr, (self.buffer.0.as_mut_ptr()).offset(self.buffered_size as isize), input_len)
-            }
+
+            Buffer {
+                ptr: self.buffer.0.as_mut_ptr(),
+                len: self.buffer.0.len(),
+                offset: self.buffered_size as _
+            }.copy_from_slice(&input);
+
             self.buffered_size += input_len as u16;
             return;
         }

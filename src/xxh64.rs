@@ -2,71 +2,30 @@
 //!
 //!Written using C implementation as reference.
 
-use core::{ptr, slice};
+use core::{mem, slice};
 
+use crate::utils::{Buffer, get_unaligned_chunk, get_aligned_chunk};
 use crate::xxh64_common::*;
 
-#[inline(always)]
-fn read_32le_unaligned(data: *const u8) -> u32 {
-    debug_assert!(!data.is_null());
-
-    unsafe {
-        ptr::read_unaligned(data as *const u32).to_le()
-    }
-}
-
-#[inline(always)]
-fn read_32le_aligned(data: *const u8) -> u32 {
-    debug_assert!(!data.is_null());
-
-    unsafe {
-        ptr::read(data as *const u32).to_le()
-    }
-}
-
-#[inline(always)]
-fn read_32le_is_align(data: *const u8, is_aligned: bool) -> u32 {
-    match is_aligned {
-        true => read_32le_aligned(data),
-        false => read_32le_unaligned(data),
-    }
-}
-
-#[inline(always)]
-fn read_64le_unaligned(data: *const u8) -> u64 {
-    debug_assert!(!data.is_null());
-
-    unsafe {
-        ptr::read_unaligned(data as *const u64).to_le()
-    }
-}
-
-#[inline(always)]
-fn read_64le_aligned(data: *const u8) -> u64 {
-    debug_assert!(!data.is_null());
-
-    unsafe {
-        ptr::read(data as *const u64).to_le()
-    }
-}
-
-#[inline(always)]
-fn read_64le_is_align(data: *const u8, is_aligned: bool) -> u64 {
-    match is_aligned {
-        true => read_64le_aligned(data),
-        false => read_64le_unaligned(data),
-    }
-}
-
 fn finalize(mut input: u64, mut data: &[u8], is_aligned: bool) -> u64 {
+    let read_chunk = if is_aligned {
+        get_aligned_chunk::<u64>
+    } else {
+        get_unaligned_chunk::<u64>
+    };
     while data.len() >= 8 {
-        input ^= round(0, read_64le_is_align(data.as_ptr(), is_aligned));
+        input ^= round(0, read_chunk(data, 0).to_le());
         data = &data[8..];
         input = input.rotate_left(27).wrapping_mul(PRIME_1).wrapping_add(PRIME_4)
     }
 
-    if data.len() >= 4 {
-        input ^= (read_32le_is_align(data.as_ptr(), is_aligned) as u64).wrapping_mul(PRIME_1);
+    let read_chunk = if is_aligned {
+        get_aligned_chunk::<u32>
+    } else {
+        get_unaligned_chunk::<u32>
+    };
+    while data.len() >= 4 {
+        input ^= (read_chunk(data, 0).to_le() as u64).wrapping_mul(PRIME_1);
         data = &data[4..];
         input = input.rotate_left(23).wrapping_mul(PRIME_2).wrapping_add(PRIME_3);
     }
@@ -90,13 +49,13 @@ const fn init_v(seed: u64) -> (u64, u64, u64, u64) {
 }
 
 macro_rules! round_loop {
-    ($input:ident => $($v:tt)+) => {unsafe {
-        $($v)+.0 = round($($v)+.0, read_64le_unaligned($input.as_ptr()));
-        $($v)+.1 = round($($v)+.1, read_64le_unaligned($input.as_ptr().add(8)));
-        $($v)+.2 = round($($v)+.2, read_64le_unaligned($input.as_ptr().add(16)));
-        $($v)+.3 = round($($v)+.3, read_64le_unaligned($input.as_ptr().add(24)));
+    ($input:ident => $($v:tt)+) => {
+        $($v)+.0 = round($($v)+.0, get_unaligned_chunk::<u64>($input, 0).to_le());
+        $($v)+.1 = round($($v)+.1, get_unaligned_chunk::<u64>($input, 8).to_le());
+        $($v)+.2 = round($($v)+.2, get_unaligned_chunk::<u64>($input, 16).to_le());
+        $($v)+.3 = round($($v)+.3, get_unaligned_chunk::<u64>($input, 24).to_le());
         $input = &$input[32..];
-    }}
+    }
 }
 
 ///Returns hash for the provided input.
@@ -158,9 +117,12 @@ impl Xxh64 {
         self.total_len = self.total_len.wrapping_add(input.len() as u64);
 
         if (self.mem_size as usize + input.len()) < CHUNK_SIZE {
-            unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr(), (self.mem.as_mut_ptr() as *mut u8).add(self.mem_size as usize), input.len())
-            }
+            Buffer {
+                ptr: self.mem.as_mut_ptr() as *mut u8,
+                len: mem::size_of_val(&self.mem),
+                offset: self.mem_size as _,
+            }.copy_from_slice(input);
+
             self.mem_size += input.len() as u64;
             return
         }
@@ -170,9 +132,11 @@ impl Xxh64 {
             //hence fill_len >= input.len()
             let fill_len = CHUNK_SIZE - self.mem_size as usize;
 
-            unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr(), (self.mem.as_mut_ptr() as *mut u8).add(self.mem_size as usize), fill_len)
-            }
+            Buffer {
+                ptr: self.mem.as_mut_ptr() as *mut u8,
+                len: mem::size_of_val(&self.mem),
+                offset: self.mem_size as _,
+            }.copy_from_slice_by_size(input, fill_len);
 
             self.v.0 = round(self.v.0, self.mem[0].to_le());
             self.v.1 = round(self.v.1, self.mem[1].to_le());
@@ -184,9 +148,6 @@ impl Xxh64 {
         }
 
         if input.len() >= CHUNK_SIZE {
-            //In general this loop is not that long running on small input
-            //So it is questionable whether we want to allocate local vars here.
-            //Streaming version is likely to be used with relatively small chunks anyway.
             loop {
                 round_loop!(input => self.v);
 
@@ -197,9 +158,11 @@ impl Xxh64 {
         }
 
         if input.len() > 0 {
-            unsafe {
-                ptr::copy_nonoverlapping(input.as_ptr(), self.mem.as_mut_ptr() as *mut u8, input.len())
-            }
+            Buffer {
+                ptr: self.mem.as_mut_ptr() as *mut u8,
+                len: mem::size_of_val(&self.mem),
+                offset: 0
+            }.copy_from_slice(input);
             self.mem_size = input.len() as u64;
         }
     }
