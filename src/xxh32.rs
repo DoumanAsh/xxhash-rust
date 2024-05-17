@@ -4,47 +4,22 @@
 
 use core::{mem, slice};
 
-use crate::utils::{Buffer, slice_chunks, slice_aligned_chunks};
+use crate::utils::{Buffer, get_unaligned_chunk, get_aligned_chunk};
 use crate::xxh32_common::*;
 
-const fn finalize(mut input: u32, data: &[u8], is_aligned: bool) -> u32 {
-    let mut idx = 0;
-    let remainder = {
-        match is_aligned {
-            true => {
-                let (chunks, remainder) = slice_aligned_chunks::<u32>(data);
-                while idx < chunks.len() {
-                    let chunk = &chunks[idx];
-                    input = input.wrapping_add(
-                        chunk.to_le().wrapping_mul(PRIME_3)
-                    );
-                    input = input.rotate_left(17).wrapping_mul(PRIME_4);
-                    idx += 1;
-                }
+fn finalize(mut input: u32, mut data: &[u8], is_aligned: bool) -> u32 {
+    while data.len() >= 4 {
+        input = input.wrapping_add(match is_aligned {
+            true => get_aligned_chunk::<u32>(data, 0).to_le().wrapping_mul(PRIME_3),
+            false => get_unaligned_chunk::<u32>(data, 0).to_le().wrapping_mul(PRIME_3),
+        });
+        input = input.rotate_left(17).wrapping_mul(PRIME_4);
+        data = &data[4..];
+    }
 
-                remainder
-            },
-            false => {
-                let (chunks, remainder) = slice_chunks::<4>(data);
-                while idx < chunks.len() {
-                    let chunk = &chunks[idx];
-                    input = input.wrapping_add(
-                        u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]).to_le().wrapping_mul(PRIME_3)
-                    );
-                    input = input.rotate_left(17).wrapping_mul(PRIME_4);
-                    idx += 1;
-                }
-
-                remainder
-            }
-        }
-    };
-
-    idx = 0;
-    while idx < remainder.len() {
-        input = input.wrapping_add((remainder[idx] as u32).wrapping_mul(PRIME_5));
+    for byte in data.iter() {
+        input = input.wrapping_add((*byte as u32).wrapping_mul(PRIME_5));
         input = input.rotate_left(11).wrapping_mul(PRIME_1);
-        idx += 1;
     }
 
     avalanche(input)
@@ -62,29 +37,27 @@ const fn init_v(seed: u32) -> (u32, u32, u32, u32) {
 
 macro_rules! round_loop {
     ($input:ident => $($v:tt)+) => {
-        let mut idx = 0;
-        while idx < $input.len() {
-            let chunk = &$input[idx];
-            $($v)+.0 = round($($v)+.0, u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]).to_le());
-            $($v)+.1 = round($($v)+.1, u32::from_ne_bytes([chunk[4], chunk[5], chunk[6], chunk[7]]).to_le());
-            $($v)+.2 = round($($v)+.2, u32::from_ne_bytes([chunk[8], chunk[9], chunk[10], chunk[11]]).to_le());
-            $($v)+.3 = round($($v)+.3, u32::from_ne_bytes([chunk[12], chunk[13], chunk[14], chunk[15]]).to_le());
-            idx += 1;
-        }
+        $($v)+.0 = round($($v)+.0, get_unaligned_chunk::<u32>($input, 0).to_le());
+        $($v)+.1 = round($($v)+.1, get_unaligned_chunk::<u32>($input, 4).to_le());
+        $($v)+.2 = round($($v)+.2, get_unaligned_chunk::<u32>($input, 8).to_le());
+        $($v)+.3 = round($($v)+.3, get_unaligned_chunk::<u32>($input, 12).to_le());
+        $input = &$input[16..];
     }
 }
 
 ///Returns hash for the provided input
-pub const fn xxh32(mut input: &[u8], seed: u32) -> u32 {
+pub fn xxh32(mut input: &[u8], seed: u32) -> u32 {
     let mut result = input.len() as u32;
 
     if input.len() >= CHUNK_SIZE {
         let mut v = init_v(seed);
 
-        let (chunks, remainder) = slice_chunks::<CHUNK_SIZE>(input);
-
-        round_loop!(chunks => v);
-        input = remainder;
+        loop {
+            round_loop!(input => v);
+            if input.len() < CHUNK_SIZE {
+                break;
+            }
+        }
 
         result = result.wrapping_add(
             v.0.rotate_left(1).wrapping_add(
@@ -160,16 +133,22 @@ impl Xxh32 {
             self.mem_size = 0;
         }
 
-        let (chunks, remainder) = slice_chunks::<CHUNK_SIZE>(input);
-        round_loop!(chunks => self.v);
+        if input.len() >= CHUNK_SIZE {
+            loop {
+                round_loop!(input => self.v);
+                if input.len() < CHUNK_SIZE {
+                    break;
+                }
+            }
+        }
 
-        if remainder.len() > 0 {
+        if input.len() > 0 {
             Buffer {
                 ptr: self.mem.as_mut_ptr() as *mut u8,
                 len: mem::size_of_val(&self.mem),
                 offset: 0
-            }.copy_from_slice(remainder);
-            self.mem_size = remainder.len() as u32;
+            }.copy_from_slice(input);
+            self.mem_size = input.len() as u32;
         }
     }
 

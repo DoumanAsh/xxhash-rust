@@ -4,55 +4,35 @@
 
 use core::{mem, slice};
 
-use crate::utils::{Buffer, slice_chunks, slice_aligned_chunks};
+use crate::utils::{Buffer, get_unaligned_chunk, get_aligned_chunk};
 use crate::xxh64_common::*;
 
-const fn finalize(mut input: u64, data: &[u8], is_aligned: bool) -> u64 {
-    let mut idx = 0;
-    let remainder = {
-        match is_aligned {
-            true => {
-                let (chunks, remainder) = slice_aligned_chunks::<u64>(data);
-                while idx < chunks.len() {
-                    input ^= round(0, chunks[idx].to_le());
-                    input = input.rotate_left(27).wrapping_mul(PRIME_1).wrapping_add(PRIME_4);
-                    idx += 1;
-                }
-
-                idx = 0;
-                let (chunks, remainder) = slice_aligned_chunks::<u32>(remainder);
-                while idx < chunks.len() {
-                    input ^= (chunks[idx].to_le() as u64).wrapping_mul(PRIME_1);
-                    input = input.rotate_left(23).wrapping_mul(PRIME_2).wrapping_add(PRIME_3);
-                    idx += 1;
-                }
-                remainder
-            },
-            false => {
-                let (chunks, remainder) = slice_chunks::<8>(data);
-                while idx < chunks.len() {
-                    input ^= round(0, u64::from_ne_bytes(chunks[idx]).to_le());
-                    input = input.rotate_left(27).wrapping_mul(PRIME_1).wrapping_add(PRIME_4);
-                    idx += 1;
-                }
-
-                idx = 0;
-                let (chunks, remainder) = slice_chunks::<4>(remainder);
-                while idx < chunks.len() {
-                    input ^= (u32::from_ne_bytes(chunks[idx]).to_le() as u64).wrapping_mul(PRIME_1);
-                    input = input.rotate_left(23).wrapping_mul(PRIME_2).wrapping_add(PRIME_3);
-                    idx += 1;
-                }
-                remainder
-            }
-        }
+fn finalize(mut input: u64, mut data: &[u8], is_aligned: bool) -> u64 {
+    let read_chunk = if is_aligned {
+        get_aligned_chunk::<u64>
+    } else {
+        get_unaligned_chunk::<u64>
     };
+    while data.len() >= 8 {
+        input ^= round(0, read_chunk(data, 0).to_le());
+        data = &data[8..];
+        input = input.rotate_left(27).wrapping_mul(PRIME_1).wrapping_add(PRIME_4)
+    }
 
-    idx = 0;
-    while idx < remainder.len() {
-        input ^= (remainder[idx] as u64).wrapping_mul(PRIME_5);
+    let read_chunk = if is_aligned {
+        get_aligned_chunk::<u32>
+    } else {
+        get_unaligned_chunk::<u32>
+    };
+    while data.len() >= 4 {
+        input ^= (read_chunk(data, 0).to_le() as u64).wrapping_mul(PRIME_1);
+        data = &data[4..];
+        input = input.rotate_left(23).wrapping_mul(PRIME_2).wrapping_add(PRIME_3);
+    }
+
+    for byte in data.iter() {
+        input ^= (*byte as u64).wrapping_mul(PRIME_5);
         input = input.rotate_left(11).wrapping_mul(PRIME_1);
-        idx += 1;
     }
 
     avalanche(input)
@@ -70,30 +50,29 @@ const fn init_v(seed: u64) -> (u64, u64, u64, u64) {
 
 macro_rules! round_loop {
     ($input:ident => $($v:tt)+) => {
-        let mut idx = 0;
-        while idx < $input.len() {
-            let chunk = &$input[idx];
-            $($v)+.0 = round($($v)+.0, u64::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7]]).to_le());
-            $($v)+.1 = round($($v)+.1, u64::from_ne_bytes([chunk[8], chunk[9], chunk[10], chunk[11], chunk[12], chunk[13], chunk[14], chunk[15]]).to_le());
-            $($v)+.2 = round($($v)+.2, u64::from_ne_bytes([chunk[16], chunk[17], chunk[18], chunk[19], chunk[20], chunk[21], chunk[22], chunk[23]]).to_le());
-            $($v)+.3 = round($($v)+.3, u64::from_ne_bytes([chunk[24], chunk[25], chunk[26], chunk[27], chunk[28], chunk[29], chunk[30], chunk[31]]).to_le());
-            idx += 1;
-        }
+        $($v)+.0 = round($($v)+.0, get_unaligned_chunk::<u64>($input, 0).to_le());
+        $($v)+.1 = round($($v)+.1, get_unaligned_chunk::<u64>($input, 8).to_le());
+        $($v)+.2 = round($($v)+.2, get_unaligned_chunk::<u64>($input, 16).to_le());
+        $($v)+.3 = round($($v)+.3, get_unaligned_chunk::<u64>($input, 24).to_le());
+        $input = &$input[32..];
     }
 }
 
 ///Returns hash for the provided input.
-pub const fn xxh64(mut input: &[u8], seed: u64) -> u64 {
+pub fn xxh64(mut input: &[u8], seed: u64) -> u64 {
     let input_len = input.len() as u64;
     let mut result;
 
     if input.len() >= CHUNK_SIZE {
         let mut v = init_v(seed);
 
-        let (chunks, remainder) = slice_chunks::<CHUNK_SIZE>(input);
+        loop {
+            round_loop!(input => v);
 
-        round_loop!(chunks => v);
-        input = remainder;
+            if input.len() < CHUNK_SIZE {
+                break;
+            }
+        }
 
         result = v.0.rotate_left(1).wrapping_add(v.1.rotate_left(7))
                                    .wrapping_add(v.2.rotate_left(12))
@@ -168,16 +147,23 @@ impl Xxh64 {
             self.mem_size = 0;
         }
 
-        let (chunks, remainder) = slice_chunks::<CHUNK_SIZE>(input);
-        round_loop!(chunks => self.v);
+        if input.len() >= CHUNK_SIZE {
+            loop {
+                round_loop!(input => self.v);
 
-        if remainder.len() > 0 {
+                if input.len() < CHUNK_SIZE {
+                    break;
+                }
+            }
+        }
+
+        if input.len() > 0 {
             Buffer {
                 ptr: self.mem.as_mut_ptr() as *mut u8,
                 len: mem::size_of_val(&self.mem),
                 offset: 0
-            }.copy_from_slice(remainder);
-            self.mem_size = remainder.len() as u64;
+            }.copy_from_slice(input);
+            self.mem_size = input.len() as u64;
         }
     }
 
