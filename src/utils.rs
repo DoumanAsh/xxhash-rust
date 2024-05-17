@@ -17,7 +17,7 @@ pub const fn slice_chunks<const N: usize>(input: &[u8]) -> (&[[u8; N]], &[u8]) {
 ///
 ///This function assumes input is aligned buffer, if that's not guaranteed, use `slice_chunks`
 pub const fn slice_aligned_chunks<T: Copy>(input: &[u8]) -> (&[T], &[u8]) {
-    debug_assert!(mem::size_of::<T>() > 0); //N MUST be positive
+    debug_assert!(mem::size_of::<T>() > 0); //Size MUST be positive
     let input_len = input.len();
 
     //First we need to split slice into two parts:
@@ -36,6 +36,31 @@ pub const fn slice_aligned_chunks<T: Copy>(input: &[u8]) -> (&[T], &[u8]) {
     (chunks, rest)
 }
 
+#[inline(always)]
+pub const fn get_aligned_chunk_ref<T: Copy>(input: &[u8], offset: usize) -> &T {
+    debug_assert!(mem::size_of::<T>() > 0); //Size MUST be positive
+    debug_assert!(mem::size_of::<T>() <= input.len().saturating_sub(offset)); //Must fit
+
+    unsafe {
+        &*(input.as_ptr().add(offset) as *const T)
+    }
+}
+
+#[inline(always)]
+pub const fn get_aligned_chunk<T: Copy>(input: &[u8], offset: usize) -> T {
+    *get_aligned_chunk_ref(input, offset)
+}
+
+#[inline(always)]
+pub fn get_unaligned_chunk<T: Copy>(input: &[u8], offset: usize) -> T {
+    debug_assert!(mem::size_of::<T>() > 0); //Size MUST be positive
+    debug_assert!(mem::size_of::<T>() <= input.len().saturating_sub(offset)); //Must fit
+
+    unsafe {
+        ptr::read_unaligned(input.as_ptr().add(offset) as *const T)
+    }
+}
+
 pub struct Buffer {
     pub ptr: *mut u8,
     pub len: usize,
@@ -44,12 +69,12 @@ pub struct Buffer {
 
 impl Buffer {
     #[inline(always)]
-    pub const fn copy_from_slice(&self, src: &[u8]) {
+    pub fn copy_from_slice(&self, src: &[u8]) {
         self.copy_from_slice_by_size(src, src.len())
     }
 
     #[inline(always)]
-    pub const fn copy_from_slice_by_size(&self, src: &[u8], len: usize) {
+    pub fn copy_from_slice_by_size(&self, src: &[u8], len: usize) {
         debug_assert!(self.len.saturating_sub(self.offset) >= len);
 
         unsafe {

@@ -8,7 +8,7 @@ use core::{ptr, mem};
 use crate::xxh32_common as xxh32;
 use crate::xxh64_common as xxh64;
 use crate::xxh3_common::*;
-use crate::utils::{Buffer, slice_chunks};
+use crate::utils::{Buffer, slice_chunks, slice_aligned_chunks, get_aligned_chunk, get_aligned_chunk_ref};
 
 // Code is as close to original C implementation as possible
 // It does make it look ugly, but it is fast and easy to update once xxhash gets new version.
@@ -115,6 +115,17 @@ fn mix16_b(input: *const u8, secret: *const u8, seed: u64) -> u64 {
 
     input_lo ^= read_64le_unaligned(secret).wrapping_add(seed);
     input_hi ^= read_64le_unaligned(unsafe { secret.offset(8) }).wrapping_sub(seed);
+
+    mul128_fold64(input_lo, input_hi)
+}
+
+#[inline]
+fn mix16_b2(input: &[[u8; 8]; 2], secret: &[[u8; 8]; 2], seed: u64) -> u64 {
+    let mut input_lo = u64::from_ne_bytes(input[0]).to_le();
+    let mut input_hi = u64::from_ne_bytes(input[1]).to_le();
+
+    input_lo ^= u64::from_ne_bytes(secret[0]).to_le().wrapping_add(seed);
+    input_hi ^= u64::from_ne_bytes(secret[1]).to_le().wrapping_sub(seed);
 
     mul128_fold64(input_lo, input_hi)
 }
@@ -576,21 +587,52 @@ fn xxh3_64_7to128(input: &[u8], seed: u64, secret: &[u8]) -> u64 {
     if input.len() > 32 {
         if input.len() > 64 {
             if input.len() > 96 {
-                acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, 48), slice_offset_ptr(secret, 96), seed));
-                acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, input.len()-64), slice_offset_ptr(secret, 112), seed));
+                acc = acc.wrapping_add(mix16_b2(
+                    get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, 48),
+                    get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 96),
+                    seed
+                ));
+                acc = acc.wrapping_add(mix16_b2(
+                    get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, input.len() - 64),
+                    get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 112),
+                    seed
+                ));
             }
 
-            acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, 32), slice_offset_ptr(secret, 64), seed));
-            acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, input.len()-48), slice_offset_ptr(secret, 80), seed));
+            acc = acc.wrapping_add(mix16_b2(
+                get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, 32),
+                get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 64),
+                seed
+            ));
+            acc = acc.wrapping_add(mix16_b2(
+                get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, input.len() - 48),
+                get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 80),
+                seed
+            ));
         }
 
-        acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, 16), slice_offset_ptr(secret, 32), seed));
-        acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, input.len()-32), slice_offset_ptr(secret, 48), seed));
+        acc = acc.wrapping_add(mix16_b2(
+            get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, 16),
+            get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 32),
+            seed
+        ));
+        acc = acc.wrapping_add(mix16_b2(
+            get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, input.len() - 32),
+            get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 48),
+            seed
+        ));
     }
 
-    acc = acc.wrapping_add(mix16_b(input.as_ptr(), secret.as_ptr(), seed));
-    acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, input.len()-16), slice_offset_ptr(secret, 16), seed));
-
+    acc = acc.wrapping_add(mix16_b2(
+        get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, 0),
+        get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 0),
+        seed
+    ));
+    acc = acc.wrapping_add(mix16_b2(
+        get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, input.len() - 16),
+        get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 16),
+        seed
+    ));
     avalanche(acc)
 }
 
@@ -602,16 +644,35 @@ fn xxh3_64_129to240(input: &[u8], seed: u64, secret: &[u8]) -> u64 {
     let mut acc = (input.len() as u64).wrapping_mul(xxh64::PRIME_1);
     let nb_rounds = input.len() / 16;
 
+    let (secret_chunks, _) = slice_aligned_chunks::<[[u8; 8]; 2]>(secret);
+    let (input_chunks, _) = slice_aligned_chunks::<[[u8; 8]; 2]>(input);
+
+    debug_assert!(secret_chunks.len() >= 8);
+    debug_assert!(input_chunks.len() >= 8);
+
     for idx in 0..8 {
-        acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, 16*idx), slice_offset_ptr(secret, 16*idx), seed));
+        acc = acc.wrapping_add(mix16_b2(&input_chunks[idx], &secret_chunks[idx], seed));
     }
     acc = avalanche(acc);
 
+    debug_assert!(input_chunks.len() == nb_rounds);
     for idx in 8..nb_rounds {
-        acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, 16*idx), slice_offset_ptr(secret, 16*(idx-8) + START_OFFSET), seed));
+        acc = acc.wrapping_add(
+            mix16_b2(
+                &input_chunks[idx],
+                get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, 16*(idx-8)+START_OFFSET),
+                seed
+            )
+        );
     }
 
-    acc = acc.wrapping_add(mix16_b(slice_offset_ptr(input, input.len()-16), slice_offset_ptr(secret, SECRET_SIZE_MIN-LAST_OFFSET), seed));
+    acc = acc.wrapping_add(
+        mix16_b2(
+            get_aligned_chunk_ref::<[[u8; 8]; 2]>(input, input.len()-16),
+            get_aligned_chunk_ref::<[[u8; 8]; 2]>(secret, SECRET_SIZE_MIN-LAST_OFFSET),
+            seed
+        )
+    );
 
     avalanche(acc)
 }
