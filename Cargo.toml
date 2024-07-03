@@ -1,6 +1,6 @@
 [package]
 name = "xxhash-rust"
-version = "0.8.10"
+version = "0.8.11"
 authors = ["Douman <douman@gmx.se>"]
 edition = "2018"
 description = "Implementation of xxhash"
@@ -17,6 +17,8 @@ include = [
 ]
 
 [features]
+# Enables std::io::Write implementation
+std = []
 # XXH32 makes sense only on 32bit platforms
 xxh32 = [] # Enable xxh32 implementation
 const_xxh32 = [] # Enable const xxh32 implementation

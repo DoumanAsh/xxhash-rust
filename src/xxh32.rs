@@ -208,3 +208,24 @@ impl Xxh32 {
         self.mem_size = 0;
     }
 }
+
+impl Default for Xxh32 {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::new(0)
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::io::Write for Xxh32 {
+    #[inline]
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.update(buf);
+        Ok(buf.len())
+    }
+
+    #[inline]
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}

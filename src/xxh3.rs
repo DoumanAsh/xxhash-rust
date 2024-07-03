@@ -890,6 +890,20 @@ impl core::hash::Hasher for Xxh3 {
     }
 }
 
+#[cfg(feature = "std")]
+impl std::io::Write for Xxh3 {
+    #[inline]
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.update(buf);
+        Ok(buf.len())
+    }
+
+    #[inline]
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 #[derive(Clone, Copy)]
 ///Hash builder for `Xxh3`
 pub struct Xxh3Builder {

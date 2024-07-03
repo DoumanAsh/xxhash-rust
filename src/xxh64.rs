@@ -251,6 +251,20 @@ impl core::hash::Hasher for Xxh64 {
     }
 }
 
+#[cfg(feature = "std")]
+impl std::io::Write for Xxh64 {
+    #[inline]
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.update(buf);
+        Ok(buf.len())
+    }
+
+    #[inline]
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 impl Default for Xxh64 {
     #[inline(always)]
     fn default() -> Self {

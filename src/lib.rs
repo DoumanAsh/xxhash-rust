@@ -37,6 +37,7 @@
 //!
 //!By default all features are off.
 //!
+//!- `std` - Enables `std::io::Write` trait implementation
 //!- `xxh32` - Enables 32bit algorithm. Suitable for x86 targets
 //!- `const_xxh32` - `const fn` version of `xxh32` algorithm
 //!- `xxh64` - Enables 64 algorithm. Suitable for x86_64 targets
@@ -76,6 +77,9 @@
 #![no_std]
 #![warn(missing_docs)]
 #![cfg_attr(feature = "cargo-clippy", allow(clippy::style))]
+
+#[cfg(feature = "std")]
+extern crate std;
 
 #[cfg(any(feature = "xxh32", feature = "const_xxh32", feature = "xxh3", feature = "const_xxh3"))]
 mod xxh32_common;

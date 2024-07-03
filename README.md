@@ -41,6 +41,7 @@ assert!(test_input("TEST"));
 
 By default all features are off.
 
+- `std` - Enables `std::io::Write` trait implementation
 - `xxh32` - Enables 32bit algorithm. Suitable for x86 targets
 - `const_xxh32` - `const fn` version of `xxh32` algorithm
 - `xxh64` - Enables 64 algorithm. Suitable for x86_64 targets
