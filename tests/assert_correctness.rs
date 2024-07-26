@@ -189,11 +189,13 @@ fn assert_const_xxh3() {
 fn assert_xxh3() {
     use getrandom::getrandom;
     use xxhash_c_sys as sys;
-    use xxhash_rust::xxh3::{xxh3_64, xxh3_128, xxh3_64_with_seed, xxh3_128_with_seed, Xxh3};
+    use xxhash_rust::xxh3::{xxh3_64, xxh3_128, xxh3_64_with_seed, xxh3_128_with_seed, Xxh3, Xxh3Default};
 
+    let mut hasher_default = Xxh3Default::new();
     let mut hasher_1 = Xxh3::new();
     let mut hasher_2 = Xxh3::with_seed(1);
 
+    let mut hasher_default_128 = Xxh3Default::new();
     let mut hasher_1_128 = Xxh3::new();
     let mut hasher_2_128 = Xxh3::with_seed(1);
 
@@ -211,7 +213,10 @@ fn assert_xxh3() {
         assert_eq!(result, sys_result);
         hasher_1.update(input);
         hasher_1_128.update(input);
+        hasher_default.update(input);
+        hasher_default_128.update(input);
         assert_eq!(hasher_1.digest(), result);
+        assert_eq!(hasher_default.digest(), result);
 
         let sys_result128 = unsafe {
             sys::XXH3_128bits(input.as_ptr() as _, input.len())
@@ -220,6 +225,7 @@ fn assert_xxh3() {
         assert_eq!(result128 as u64, sys_result128.low64);
         assert_eq!((result128 >> 64) as u64, sys_result128.high64);
         assert_eq!(hasher_1_128.digest128(), result128);
+        assert_eq!(hasher_default_128.digest128(), result128);
 
         let sys_result = unsafe {
             sys::XXH3_64bits_withSeed(input.as_ptr() as _, input.len(), 1)
@@ -232,6 +238,7 @@ fn assert_xxh3() {
 
         hasher_1.reset();
         hasher_2.reset();
+        hasher_default.reset();
 
         let sys_result128 = unsafe {
             sys::XXH3_128bits_withSeed(input.as_ptr() as _, input.len(), 1)
@@ -243,5 +250,6 @@ fn assert_xxh3() {
 
         hasher_1_128.reset();
         hasher_2_128.reset();
+        hasher_default_128.reset();
     }
 }
