@@ -3,7 +3,7 @@
 //!Provides `Hasher` only for 64bit as 128bit variant would not be much different due to trait
 //!being limited to `u64` outputs.
 
-use core::{ptr, mem, slice};
+use core::{ptr, mem, slice, hash};
 
 use crate::xxh32_common as xxh32;
 use crate::xxh64_common as xxh64;
@@ -678,6 +678,112 @@ const STRIPES_PER_BLOCK: usize = (DEFAULT_SECRET_SIZE - STRIPE_LEN) / SECRET_CON
 #[repr(align(64))]
 struct Aligned64<T>(T);
 
+#[inline]
+//Internal function shared between Xxh3 and Xxh3Default
+fn xxh3_stateful_consume_stripes(acc: &mut Acc, nb_stripes: usize, nb_stripes_acc: usize, input: *const u8, secret: &[u8; DEFAULT_SECRET_SIZE]) -> usize {
+    if (STRIPES_PER_BLOCK - nb_stripes_acc) <= nb_stripes {
+        let stripes_to_end = STRIPES_PER_BLOCK - nb_stripes_acc;
+        let stripes_after_end = nb_stripes - stripes_to_end;
+
+        accumulate_loop(acc, input, slice_offset_ptr!(secret, nb_stripes_acc * SECRET_CONSUME_RATE), stripes_to_end);
+        scramble_acc(acc, slice_offset_ptr!(secret, DEFAULT_SECRET_SIZE - STRIPE_LEN));
+        accumulate_loop(acc, unsafe { input.add(stripes_to_end * STRIPE_LEN) }, secret.as_ptr(), stripes_after_end);
+        stripes_after_end
+    } else {
+        accumulate_loop(acc, input, slice_offset_ptr!(secret, nb_stripes_acc * SECRET_CONSUME_RATE), nb_stripes);
+        nb_stripes_acc.wrapping_add(nb_stripes)
+    }
+}
+
+//Internal function shared between Xxh3 and Xxh3Default
+fn xxh3_stateful_update(
+    input: &[u8],
+    total_len: &mut u64,
+    acc: &mut Acc,
+    buffer: &mut Aligned64<[mem::MaybeUninit<u8>; INTERNAL_BUFFER_SIZE]>, buffered_size: &mut u16,
+    nb_stripes_acc: &mut usize,
+    secret: &Aligned64<[u8; DEFAULT_SECRET_SIZE]>
+) {
+    const INTERNAL_BUFFER_STRIPES: usize = INTERNAL_BUFFER_SIZE / STRIPE_LEN;
+
+    let mut input_ptr = input.as_ptr();
+    let mut input_len = input.len();
+    *total_len = total_len.wrapping_add(input_len as u64);
+
+    if (input_len + *buffered_size as usize) <= INTERNAL_BUFFER_SIZE {
+        unsafe {
+            ptr::copy_nonoverlapping(input_ptr, (buffer.0.as_mut_ptr() as *mut u8).offset(*buffered_size as isize), input_len)
+        }
+        *buffered_size += input_len as u16;
+        return;
+    }
+
+    if *buffered_size > 0 {
+        let fill_len = INTERNAL_BUFFER_SIZE - *buffered_size as usize;
+
+        unsafe {
+            ptr::copy_nonoverlapping(input_ptr, (buffer.0.as_mut_ptr() as *mut u8).offset(*buffered_size as isize), fill_len);
+            input_ptr = input_ptr.add(fill_len);
+            input_len -= fill_len;
+        }
+
+        *nb_stripes_acc = xxh3_stateful_consume_stripes(acc, INTERNAL_BUFFER_STRIPES, *nb_stripes_acc, buffer.0.as_ptr() as *const u8, &secret.0);
+
+        *buffered_size = 0;
+    }
+
+    debug_assert_ne!(input_len, 0);
+    if input_len > INTERNAL_BUFFER_SIZE {
+        loop {
+            *nb_stripes_acc = xxh3_stateful_consume_stripes(acc, INTERNAL_BUFFER_STRIPES, *nb_stripes_acc, input_ptr, &secret.0);
+            input_ptr = unsafe {
+                input_ptr.add(INTERNAL_BUFFER_SIZE)
+            };
+            input_len = input_len - INTERNAL_BUFFER_SIZE;
+
+            if input_len <= INTERNAL_BUFFER_SIZE {
+                break;
+            }
+        }
+
+        unsafe {
+            ptr::copy_nonoverlapping(input_ptr.offset(-(STRIPE_LEN as isize)), (buffer.0.as_mut_ptr() as *mut u8).add(buffer.0.len() - STRIPE_LEN), STRIPE_LEN)
+        }
+    }
+
+    debug_assert_ne!(input_len, 0);
+    debug_assert_eq!(*buffered_size, 0);
+    unsafe {
+        ptr::copy_nonoverlapping(input_ptr, buffer.0.as_mut_ptr() as *mut u8, input_len)
+    }
+    *buffered_size = input_len as u16;
+}
+
+#[inline(always)]
+//Internal function shared between Xxh3 and Xxh3Default
+fn xxh3_stateful_digest_internal(acc: &mut Acc, buffered_size: u16, nb_stripes_acc: usize, buffer: &Aligned64<[mem::MaybeUninit<u8>; INTERNAL_BUFFER_SIZE]>, secret: &Aligned64<[u8; DEFAULT_SECRET_SIZE]>) {
+    if buffered_size as usize >= STRIPE_LEN {
+        let nb_stripes = (buffered_size as usize - 1) / STRIPE_LEN;
+        xxh3_stateful_consume_stripes(acc, nb_stripes, nb_stripes_acc, buffer.0.as_ptr() as *const u8, &secret.0);
+
+        accumulate_512(acc,
+            slice_offset_ptr!(&buffer.0, buffered_size as usize - STRIPE_LEN),
+            slice_offset_ptr!(&secret.0, DEFAULT_SECRET_SIZE - STRIPE_LEN - SECRET_LASTACC_START)
+        );
+    } else {
+        let mut last_stripe = mem::MaybeUninit::<[u8; STRIPE_LEN]>::uninit();
+        let catchup_size = STRIPE_LEN - buffered_size as usize;
+        debug_assert!(buffered_size > 0);
+
+        unsafe {
+            ptr::copy_nonoverlapping(slice_offset_ptr!(&buffer.0, buffer.0.len() - catchup_size), last_stripe.as_mut_ptr() as _, catchup_size);
+            ptr::copy_nonoverlapping(buffer.0.as_ptr(), (last_stripe.as_mut_ptr() as *mut mem::MaybeUninit<u8>).add(catchup_size), buffered_size as usize);
+        }
+
+        accumulate_512(acc, last_stripe.as_ptr() as _, slice_offset_ptr!(&secret.0, DEFAULT_SECRET_SIZE - STRIPE_LEN - SECRET_LASTACC_START));
+    }
+}
+
 #[derive(Clone)]
 ///Default XXH3 Streaming algorithm
 ///
@@ -722,108 +828,16 @@ impl Xxh3Default {
         }
     }
 
-    #[inline]
-    fn consume_stripes(acc: &mut Acc, nb_stripes: usize, nb_stripes_acc: usize, input: *const u8, secret: &[u8; DEFAULT_SECRET_SIZE]) -> usize {
-        if (STRIPES_PER_BLOCK - nb_stripes_acc) <= nb_stripes {
-            let stripes_to_end = STRIPES_PER_BLOCK - nb_stripes_acc;
-            let stripes_after_end = nb_stripes - stripes_to_end;
-
-            accumulate_loop(acc, input, slice_offset_ptr!(secret, nb_stripes_acc * SECRET_CONSUME_RATE), stripes_to_end);
-            scramble_acc(acc, slice_offset_ptr!(secret, DEFAULT_SECRET_SIZE - STRIPE_LEN));
-            accumulate_loop(acc, unsafe { input.add(stripes_to_end * STRIPE_LEN) }, secret.as_ptr(), stripes_after_end);
-            stripes_after_end
-        } else {
-            accumulate_loop(acc, input, slice_offset_ptr!(secret, nb_stripes_acc * SECRET_CONSUME_RATE), nb_stripes);
-            nb_stripes_acc.wrapping_add(nb_stripes)
-        }
-    }
-
-    #[inline]
+    #[inline(always)]
     ///Hashes provided chunk
     pub fn update(&mut self, input: &[u8]) {
-        const INTERNAL_BUFFER_STRIPES: usize = INTERNAL_BUFFER_SIZE / STRIPE_LEN;
-
-        let mut input_ptr = input.as_ptr();
-        let mut input_len = input.len();
-        self.total_len = self.total_len.wrapping_add(input_len as u64);
-
-        if (input_len + self.buffered_size as usize) <= INTERNAL_BUFFER_SIZE {
-            unsafe {
-                ptr::copy_nonoverlapping(input_ptr, (self.buffer.0.as_mut_ptr() as *mut u8).offset(self.buffered_size as isize), input_len)
-            }
-            self.buffered_size += input_len as u16;
-            return;
-        }
-
-        if self.buffered_size > 0 {
-            let fill_len = INTERNAL_BUFFER_SIZE - self.buffered_size as usize;
-
-            unsafe {
-                ptr::copy_nonoverlapping(input_ptr, (self.buffer.0.as_mut_ptr() as *mut u8).offset(self.buffered_size as isize), fill_len);
-                input_ptr = input_ptr.add(fill_len);
-                input_len -= fill_len;
-            }
-
-            self.nb_stripes_acc = Self::consume_stripes(&mut self.acc, INTERNAL_BUFFER_STRIPES, self.nb_stripes_acc, self.buffer.0.as_ptr() as *const u8, &Self::DEFAULT_SECRET.0);
-
-            self.buffered_size = 0;
-        }
-
-        debug_assert_ne!(input_len, 0);
-        if input_len > INTERNAL_BUFFER_SIZE {
-            loop {
-                self.nb_stripes_acc = Self::consume_stripes(&mut self.acc, INTERNAL_BUFFER_STRIPES, self.nb_stripes_acc, input_ptr, &Self::DEFAULT_SECRET.0);
-                input_ptr = unsafe {
-                    input_ptr.add(INTERNAL_BUFFER_SIZE)
-                };
-                input_len = input_len - INTERNAL_BUFFER_SIZE;
-
-                if input_len <= INTERNAL_BUFFER_SIZE {
-                    break;
-                }
-            }
-
-            unsafe {
-                ptr::copy_nonoverlapping(input_ptr.offset(-(STRIPE_LEN as isize)), (self.buffer.0.as_mut_ptr() as *mut u8).add(self.buffer.0.len() - STRIPE_LEN), STRIPE_LEN)
-            }
-        }
-
-        debug_assert_ne!(input_len, 0);
-        debug_assert_eq!(self.buffered_size, 0);
-        unsafe {
-            ptr::copy_nonoverlapping(input_ptr, self.buffer.0.as_mut_ptr() as *mut u8, input_len)
-        }
-        self.buffered_size = input_len as u16;
-    }
-
-    #[inline(always)]
-    fn digest_internal_common(&self, acc: &mut Acc) {
-        if self.buffered_size as usize >= STRIPE_LEN {
-            let nb_stripes = (self.buffered_size as usize - 1) / STRIPE_LEN;
-            Self::consume_stripes(acc, nb_stripes, self.nb_stripes_acc, self.buffer.0.as_ptr() as *mut u8, &Self::DEFAULT_SECRET.0);
-
-            accumulate_512(acc,
-                           slice_offset_ptr!(&self.buffer.0, self.buffered_size as usize - STRIPE_LEN),
-                           slice_offset_ptr!(&Self::DEFAULT_SECRET.0, DEFAULT_SECRET_SIZE - STRIPE_LEN - SECRET_LASTACC_START)
-            );
-        } else {
-            let mut last_stripe = mem::MaybeUninit::<[u8; STRIPE_LEN]>::uninit();
-            let catchup_size = STRIPE_LEN - self.buffered_size as usize;
-            debug_assert!(self.buffered_size > 0);
-
-            unsafe {
-                ptr::copy_nonoverlapping(slice_offset_ptr!(&self.buffer.0, self.buffer.0.len() - catchup_size), last_stripe.as_mut_ptr() as _, catchup_size);
-                ptr::copy_nonoverlapping(self.buffer.0.as_ptr(), (last_stripe.as_mut_ptr() as *mut mem::MaybeUninit<u8>).add(catchup_size), self.buffered_size as usize);
-            }
-
-            accumulate_512(acc, last_stripe.as_ptr() as _, slice_offset_ptr!(&Self::DEFAULT_SECRET.0, DEFAULT_SECRET_SIZE - STRIPE_LEN - SECRET_LASTACC_START));
-        }
+        xxh3_stateful_update(input, &mut self.total_len, &mut self.acc, &mut self.buffer, &mut self.buffered_size, &mut self.nb_stripes_acc, &Self::DEFAULT_SECRET);
     }
 
     #[inline(never)]
     fn digest_mid_sized(&self) -> u64 {
         let mut acc = self.acc.clone();
-        self.digest_internal_common(&mut acc);
+        xxh3_stateful_digest_internal(&mut acc, self.buffered_size, self.nb_stripes_acc, &self.buffer, &Self::DEFAULT_SECRET);
 
         merge_accs(&mut acc, slice_offset_ptr!(&Self::DEFAULT_SECRET.0, SECRET_MERGEACCS_START),
                     self.total_len.wrapping_mul(xxh64::PRIME_1))
@@ -832,7 +846,7 @@ impl Xxh3Default {
     #[inline(never)]
     fn digest_mid_sized_128(&self) -> u128 {
         let mut acc = self.acc.clone();
-        self.digest_internal_common(&mut acc);
+        xxh3_stateful_digest_internal(&mut acc, self.buffered_size, self.nb_stripes_acc, &self.buffer, &Self::DEFAULT_SECRET);
 
         let low = merge_accs(&mut acc, slice_offset_ptr!(&Self::DEFAULT_SECRET.0, SECRET_MERGEACCS_START),
                                 self.total_len.wrapping_mul(xxh64::PRIME_1));
@@ -872,6 +886,33 @@ impl Default for Xxh3Default {
     #[inline(always)]
     fn default() -> Self {
         Self::new()
+    }
+}
+
+
+impl hash::Hasher for Xxh3Default {
+    #[inline(always)]
+    fn finish(&self) -> u64 {
+        self.digest()
+    }
+
+    #[inline(always)]
+    fn write(&mut self, input: &[u8]) {
+        self.update(input)
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::io::Write for Xxh3Default {
+    #[inline]
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.update(buf);
+        Ok(buf.len())
+    }
+
+    #[inline]
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
     }
 }
 
@@ -942,107 +983,15 @@ impl Xxh3 {
     }
 
     #[inline]
-    fn consume_stripes(acc: &mut Acc, nb_stripes: usize, nb_stripes_acc: usize, input: *const u8, secret: &[u8; DEFAULT_SECRET_SIZE]) -> usize {
-        if (STRIPES_PER_BLOCK - nb_stripes_acc) <= nb_stripes {
-            let stripes_to_end = STRIPES_PER_BLOCK - nb_stripes_acc;
-            let stripes_after_end = nb_stripes - stripes_to_end;
-
-            accumulate_loop(acc, input, slice_offset_ptr!(secret, nb_stripes_acc * SECRET_CONSUME_RATE), stripes_to_end);
-            scramble_acc(acc, slice_offset_ptr!(secret, DEFAULT_SECRET_SIZE - STRIPE_LEN));
-            accumulate_loop(acc, unsafe { input.add(stripes_to_end * STRIPE_LEN) }, secret.as_ptr(), stripes_after_end);
-            stripes_after_end
-        } else {
-            accumulate_loop(acc, input, slice_offset_ptr!(secret, nb_stripes_acc * SECRET_CONSUME_RATE), nb_stripes);
-            nb_stripes_acc.wrapping_add(nb_stripes)
-        }
-    }
-
-    #[inline]
     ///Hashes provided chunk
     pub fn update(&mut self, input: &[u8]) {
-        const INTERNAL_BUFFER_STRIPES: usize = INTERNAL_BUFFER_SIZE / STRIPE_LEN;
-
-        let mut input_ptr = input.as_ptr();
-        let mut input_len = input.len();
-        self.total_len = self.total_len.wrapping_add(input_len as u64);
-
-        if (input_len + self.buffered_size as usize) <= INTERNAL_BUFFER_SIZE {
-            unsafe {
-                ptr::copy_nonoverlapping(input_ptr, (self.buffer.0.as_mut_ptr() as *mut u8).offset(self.buffered_size as isize), input_len)
-            }
-            self.buffered_size += input_len as u16;
-            return;
-        }
-
-        if self.buffered_size > 0 {
-            let fill_len = INTERNAL_BUFFER_SIZE - self.buffered_size as usize;
-
-            unsafe {
-                ptr::copy_nonoverlapping(input_ptr, (self.buffer.0.as_mut_ptr() as *mut u8).offset(self.buffered_size as isize), fill_len);
-                input_ptr = input_ptr.add(fill_len);
-                input_len -= fill_len;
-            }
-
-            self.nb_stripes_acc = Self::consume_stripes(&mut self.acc, INTERNAL_BUFFER_STRIPES, self.nb_stripes_acc, self.buffer.0.as_ptr() as *const u8, &self.custom_secret.0);
-
-            self.buffered_size = 0;
-        }
-
-        debug_assert_ne!(input_len, 0);
-        if input_len > INTERNAL_BUFFER_SIZE {
-            loop {
-                self.nb_stripes_acc = Self::consume_stripes(&mut self.acc, INTERNAL_BUFFER_STRIPES, self.nb_stripes_acc, input_ptr, &self.custom_secret.0);
-                input_ptr = unsafe {
-                    input_ptr.add(INTERNAL_BUFFER_SIZE)
-                };
-                input_len = input_len - INTERNAL_BUFFER_SIZE;
-
-                if input_len <= INTERNAL_BUFFER_SIZE {
-                    break;
-                }
-            }
-
-            unsafe {
-                ptr::copy_nonoverlapping(input_ptr.offset(-(STRIPE_LEN as isize)), (self.buffer.0.as_mut_ptr() as *mut u8).add(self.buffer.0.len() - STRIPE_LEN), STRIPE_LEN)
-            }
-        }
-
-        debug_assert_ne!(input_len, 0);
-        debug_assert_eq!(self.buffered_size, 0);
-        unsafe {
-            ptr::copy_nonoverlapping(input_ptr, self.buffer.0.as_mut_ptr() as *mut u8, input_len)
-        }
-        self.buffered_size = input_len as u16;
-    }
-
-    #[inline(always)]
-    fn digest_internal_common(&self, acc: &mut Acc) {
-        if self.buffered_size as usize >= STRIPE_LEN {
-            let nb_stripes = (self.buffered_size as usize - 1) / STRIPE_LEN;
-            Self::consume_stripes(acc, nb_stripes, self.nb_stripes_acc, self.buffer.0.as_ptr() as *mut u8, &self.custom_secret.0);
-
-            accumulate_512(acc,
-                           slice_offset_ptr!(&self.buffer.0, self.buffered_size as usize - STRIPE_LEN),
-                           slice_offset_ptr!(&self.custom_secret.0, self.custom_secret.0.len() - STRIPE_LEN - SECRET_LASTACC_START)
-            );
-        } else {
-            let mut last_stripe = mem::MaybeUninit::<[u8; STRIPE_LEN]>::uninit();
-            let catchup_size = STRIPE_LEN - self.buffered_size as usize;
-            debug_assert!(self.buffered_size > 0);
-
-            unsafe {
-                ptr::copy_nonoverlapping(slice_offset_ptr!(&self.buffer.0, self.buffer.0.len() - catchup_size), last_stripe.as_mut_ptr() as _, catchup_size);
-                ptr::copy_nonoverlapping(self.buffer.0.as_ptr(), (last_stripe.as_mut_ptr() as *mut mem::MaybeUninit<u8>).add(catchup_size), self.buffered_size as usize);
-            }
-
-            accumulate_512(acc, last_stripe.as_ptr() as _, slice_offset_ptr!(&self.custom_secret.0, self.custom_secret.0.len() - STRIPE_LEN - SECRET_LASTACC_START));
-        }
+        xxh3_stateful_update(input, &mut self.total_len, &mut self.acc, &mut self.buffer, &mut self.buffered_size, &mut self.nb_stripes_acc, &self.custom_secret);
     }
 
     #[inline(never)]
     fn digest_mid_sized(&self) -> u64 {
         let mut acc = self.acc.clone();
-        self.digest_internal_common(&mut acc);
+        xxh3_stateful_digest_internal(&mut acc, self.buffered_size, self.nb_stripes_acc, &self.buffer, &self.custom_secret);
 
         merge_accs(&mut acc, slice_offset_ptr!(&self.custom_secret.0, SECRET_MERGEACCS_START),
                     self.total_len.wrapping_mul(xxh64::PRIME_1))
@@ -1051,7 +1000,7 @@ impl Xxh3 {
     #[inline(never)]
     fn digest_mid_sized_128(&self) -> u128 {
         let mut acc = self.acc.clone();
-        self.digest_internal_common(&mut acc);
+        xxh3_stateful_digest_internal(&mut acc, self.buffered_size, self.nb_stripes_acc, &self.buffer, &self.custom_secret);
 
         let low = merge_accs(&mut acc, slice_offset_ptr!(&self.custom_secret.0, SECRET_MERGEACCS_START),
                                 self.total_len.wrapping_mul(xxh64::PRIME_1));
@@ -1176,6 +1125,41 @@ impl core::hash::BuildHasher for Xxh3Builder {
 }
 
 impl Default for Xxh3Builder {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Copy)]
+///Hash builder for `Xxh3Default`
+pub struct Xxh3DefaultBuilder;
+
+impl Xxh3DefaultBuilder {
+    #[inline(always)]
+    ///Creates new instance with default params.
+    pub const fn new() -> Self {
+        Self {
+        }
+    }
+
+    #[inline(always)]
+    ///Creates `Xxh3` instance
+    pub const fn build(self) -> Xxh3Default {
+        Xxh3Default::new()
+    }
+}
+
+impl core::hash::BuildHasher for Xxh3DefaultBuilder {
+    type Hasher = Xxh3Default;
+
+    #[inline(always)]
+    fn build_hasher(&self) -> Self::Hasher {
+        self.build()
+    }
+}
+
+impl Default for Xxh3DefaultBuilder {
     #[inline(always)]
     fn default() -> Self {
         Self::new()
