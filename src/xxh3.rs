@@ -818,8 +818,8 @@ impl Xxh3 {
         self.buffered_size = input_len as u16;
     }
 
-    #[inline]
-    fn digest_internal(&self, acc: &mut Acc) {
+    #[inline(always)]
+    fn digest_internal_common(&self, acc: &mut Acc) {
         if self.buffered_size as usize >= STRIPE_LEN {
             let nb_stripes = (self.buffered_size as usize - 1) / STRIPE_LEN;
             Self::consume_stripes(acc, nb_stripes, self.nb_stripes_acc, self.buffer.0.as_ptr() as *mut u8, &self.custom_secret.0);
@@ -842,14 +842,36 @@ impl Xxh3 {
         }
     }
 
-    ///Computes hash.
-    pub fn digest(&self) -> u64 {
-        if self.total_len > MID_SIZE_MAX as u64 {
-            let mut acc = self.acc.clone();
-            self.digest_internal(&mut acc);
+    #[inline(never)]
+    fn digest_mid_sized(&self) -> u64 {
+        let mut acc = self.acc.clone();
+        self.digest_internal_common(&mut acc);
 
-            merge_accs(&mut acc, slice_offset_ptr!(&self.custom_secret.0, SECRET_MERGEACCS_START),
-                       self.total_len.wrapping_mul(xxh64::PRIME_1))
+        merge_accs(&mut acc, slice_offset_ptr!(&self.custom_secret.0, SECRET_MERGEACCS_START),
+                    self.total_len.wrapping_mul(xxh64::PRIME_1))
+    }
+
+    #[inline(never)]
+    fn digest_mid_sized_128(&self) -> u128 {
+        let mut acc = self.acc.clone();
+        self.digest_internal_common(&mut acc);
+
+        let low = merge_accs(&mut acc, slice_offset_ptr!(&self.custom_secret.0, SECRET_MERGEACCS_START),
+                                self.total_len.wrapping_mul(xxh64::PRIME_1));
+        let high = merge_accs(&mut acc,
+                                slice_offset_ptr!(&self.custom_secret.0,
+                                                self.custom_secret.0.len() - mem::size_of_val(&self.acc) - SECRET_MERGEACCS_START),
+                                !self.total_len.wrapping_mul(xxh64::PRIME_2));
+        ((high as u128) << 64) | (low as u128)
+    }
+
+    ///Computes hash.
+    #[inline]
+    pub fn digest(&self) -> u64 {
+        //Separating digest mid sized allows us to inline this function, which benefits
+        //code generation when hashing fixed size types and/or if the seed is known.
+        if self.total_len > MID_SIZE_MAX as u64 {
+            self.digest_mid_sized()
         } else if self.seed > 0 {
             //Technically we should not need to use it.
             //But in all actuality original xxh3 implementation uses default secret for input with size less or equal to MID_SIZE_MAX
@@ -860,18 +882,12 @@ impl Xxh3 {
     }
 
     ///Computes hash as 128bit integer.
+    #[inline]
     pub fn digest128(&self) -> u128 {
+        //Separating digest mid sized allows us to inline this function, which benefits
+        //code generation when hashing fixed size types and/or if the seed is known.
         if self.total_len > MID_SIZE_MAX as u64 {
-            let mut acc = self.acc.clone();
-            self.digest_internal(&mut acc);
-
-            let low = merge_accs(&mut acc, slice_offset_ptr!(&self.custom_secret.0, SECRET_MERGEACCS_START),
-                                 self.total_len.wrapping_mul(xxh64::PRIME_1));
-            let high = merge_accs(&mut acc,
-                                  slice_offset_ptr!(&self.custom_secret.0,
-                                                   self.custom_secret.0.len() - mem::size_of_val(&self.acc) - SECRET_MERGEACCS_START),
-                                  !self.total_len.wrapping_mul(xxh64::PRIME_2));
-            ((high as u128) << 64) | (low as u128)
+            self.digest_mid_sized_128()
         } else if self.seed > 0 {
             //Technically we should not need to use it.
             //But in all actuality original xxh3 implementation uses default secret for input with size less or equal to MID_SIZE_MAX
