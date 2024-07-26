@@ -1139,8 +1139,7 @@ impl Xxh3DefaultBuilder {
     #[inline(always)]
     ///Creates new instance with default params.
     pub const fn new() -> Self {
-        Self {
-        }
+        Self
     }
 
     #[inline(always)]
