@@ -679,6 +679,203 @@ const STRIPES_PER_BLOCK: usize = (DEFAULT_SECRET_SIZE - STRIPE_LEN) / SECRET_CON
 struct Aligned64<T>(T);
 
 #[derive(Clone)]
+///Default XXH3 Streaming algorithm
+///
+///This is optimized version of Xxh3 struct that uses default seed/secret
+pub struct Xxh3Default {
+    acc: Acc,
+    buffer: Aligned64<[mem::MaybeUninit<u8>; INTERNAL_BUFFER_SIZE]>,
+    buffered_size: u16,
+    nb_stripes_acc: usize,
+    total_len: u64,
+}
+
+impl Xxh3Default {
+    const DEFAULT_SECRET: Aligned64<[u8; DEFAULT_SECRET_SIZE]> = Aligned64(DEFAULT_SECRET);
+
+    #[inline(always)]
+    ///Creates new hasher with default settings
+    pub const fn new() -> Self {
+        Self {
+            acc: INITIAL_ACC,
+            buffer: Aligned64([mem::MaybeUninit::uninit(); INTERNAL_BUFFER_SIZE]),
+            buffered_size: 0,
+            nb_stripes_acc: 0,
+            total_len: 0,
+        }
+    }
+
+    #[inline(always)]
+    ///Resets state
+    pub fn reset(&mut self) {
+        self.acc = INITIAL_ACC;
+        self.total_len = 0;
+        self.buffered_size = 0;
+        self.nb_stripes_acc = 0;
+    }
+
+    #[inline(always)]
+    fn initialized_buffer(&self) -> &[u8] {
+        let ptr = self.buffer.0.as_ptr();
+        unsafe {
+            slice::from_raw_parts(ptr as *const u8, self.buffered_size as usize)
+        }
+    }
+
+    #[inline]
+    fn consume_stripes(acc: &mut Acc, nb_stripes: usize, nb_stripes_acc: usize, input: *const u8, secret: &[u8; DEFAULT_SECRET_SIZE]) -> usize {
+        if (STRIPES_PER_BLOCK - nb_stripes_acc) <= nb_stripes {
+            let stripes_to_end = STRIPES_PER_BLOCK - nb_stripes_acc;
+            let stripes_after_end = nb_stripes - stripes_to_end;
+
+            accumulate_loop(acc, input, slice_offset_ptr!(secret, nb_stripes_acc * SECRET_CONSUME_RATE), stripes_to_end);
+            scramble_acc(acc, slice_offset_ptr!(secret, DEFAULT_SECRET_SIZE - STRIPE_LEN));
+            accumulate_loop(acc, unsafe { input.add(stripes_to_end * STRIPE_LEN) }, secret.as_ptr(), stripes_after_end);
+            stripes_after_end
+        } else {
+            accumulate_loop(acc, input, slice_offset_ptr!(secret, nb_stripes_acc * SECRET_CONSUME_RATE), nb_stripes);
+            nb_stripes_acc.wrapping_add(nb_stripes)
+        }
+    }
+
+    #[inline]
+    ///Hashes provided chunk
+    pub fn update(&mut self, input: &[u8]) {
+        const INTERNAL_BUFFER_STRIPES: usize = INTERNAL_BUFFER_SIZE / STRIPE_LEN;
+
+        let mut input_ptr = input.as_ptr();
+        let mut input_len = input.len();
+        self.total_len = self.total_len.wrapping_add(input_len as u64);
+
+        if (input_len + self.buffered_size as usize) <= INTERNAL_BUFFER_SIZE {
+            unsafe {
+                ptr::copy_nonoverlapping(input_ptr, (self.buffer.0.as_mut_ptr() as *mut u8).offset(self.buffered_size as isize), input_len)
+            }
+            self.buffered_size += input_len as u16;
+            return;
+        }
+
+        if self.buffered_size > 0 {
+            let fill_len = INTERNAL_BUFFER_SIZE - self.buffered_size as usize;
+
+            unsafe {
+                ptr::copy_nonoverlapping(input_ptr, (self.buffer.0.as_mut_ptr() as *mut u8).offset(self.buffered_size as isize), fill_len);
+                input_ptr = input_ptr.add(fill_len);
+                input_len -= fill_len;
+            }
+
+            self.nb_stripes_acc = Self::consume_stripes(&mut self.acc, INTERNAL_BUFFER_STRIPES, self.nb_stripes_acc, self.buffer.0.as_ptr() as *const u8, &Self::DEFAULT_SECRET.0);
+
+            self.buffered_size = 0;
+        }
+
+        debug_assert_ne!(input_len, 0);
+        if input_len > INTERNAL_BUFFER_SIZE {
+            loop {
+                self.nb_stripes_acc = Self::consume_stripes(&mut self.acc, INTERNAL_BUFFER_STRIPES, self.nb_stripes_acc, input_ptr, &Self::DEFAULT_SECRET.0);
+                input_ptr = unsafe {
+                    input_ptr.add(INTERNAL_BUFFER_SIZE)
+                };
+                input_len = input_len - INTERNAL_BUFFER_SIZE;
+
+                if input_len <= INTERNAL_BUFFER_SIZE {
+                    break;
+                }
+            }
+
+            unsafe {
+                ptr::copy_nonoverlapping(input_ptr.offset(-(STRIPE_LEN as isize)), (self.buffer.0.as_mut_ptr() as *mut u8).add(self.buffer.0.len() - STRIPE_LEN), STRIPE_LEN)
+            }
+        }
+
+        debug_assert_ne!(input_len, 0);
+        debug_assert_eq!(self.buffered_size, 0);
+        unsafe {
+            ptr::copy_nonoverlapping(input_ptr, self.buffer.0.as_mut_ptr() as *mut u8, input_len)
+        }
+        self.buffered_size = input_len as u16;
+    }
+
+    #[inline(always)]
+    fn digest_internal_common(&self, acc: &mut Acc) {
+        if self.buffered_size as usize >= STRIPE_LEN {
+            let nb_stripes = (self.buffered_size as usize - 1) / STRIPE_LEN;
+            Self::consume_stripes(acc, nb_stripes, self.nb_stripes_acc, self.buffer.0.as_ptr() as *mut u8, &Self::DEFAULT_SECRET.0);
+
+            accumulate_512(acc,
+                           slice_offset_ptr!(&self.buffer.0, self.buffered_size as usize - STRIPE_LEN),
+                           slice_offset_ptr!(&Self::DEFAULT_SECRET.0, DEFAULT_SECRET_SIZE - STRIPE_LEN - SECRET_LASTACC_START)
+            );
+        } else {
+            let mut last_stripe = mem::MaybeUninit::<[u8; STRIPE_LEN]>::uninit();
+            let catchup_size = STRIPE_LEN - self.buffered_size as usize;
+            debug_assert!(self.buffered_size > 0);
+
+            unsafe {
+                ptr::copy_nonoverlapping(slice_offset_ptr!(&self.buffer.0, self.buffer.0.len() - catchup_size), last_stripe.as_mut_ptr() as _, catchup_size);
+                ptr::copy_nonoverlapping(self.buffer.0.as_ptr(), (last_stripe.as_mut_ptr() as *mut mem::MaybeUninit<u8>).add(catchup_size), self.buffered_size as usize);
+            }
+
+            accumulate_512(acc, last_stripe.as_ptr() as _, slice_offset_ptr!(&Self::DEFAULT_SECRET.0, DEFAULT_SECRET_SIZE - STRIPE_LEN - SECRET_LASTACC_START));
+        }
+    }
+
+    #[inline(never)]
+    fn digest_mid_sized(&self) -> u64 {
+        let mut acc = self.acc.clone();
+        self.digest_internal_common(&mut acc);
+
+        merge_accs(&mut acc, slice_offset_ptr!(&Self::DEFAULT_SECRET.0, SECRET_MERGEACCS_START),
+                    self.total_len.wrapping_mul(xxh64::PRIME_1))
+    }
+
+    #[inline(never)]
+    fn digest_mid_sized_128(&self) -> u128 {
+        let mut acc = self.acc.clone();
+        self.digest_internal_common(&mut acc);
+
+        let low = merge_accs(&mut acc, slice_offset_ptr!(&Self::DEFAULT_SECRET.0, SECRET_MERGEACCS_START),
+                                self.total_len.wrapping_mul(xxh64::PRIME_1));
+        let high = merge_accs(&mut acc,
+                                slice_offset_ptr!(&Self::DEFAULT_SECRET.0,
+                                                DEFAULT_SECRET_SIZE - mem::size_of_val(&self.acc) - SECRET_MERGEACCS_START),
+                                !self.total_len.wrapping_mul(xxh64::PRIME_2));
+        ((high as u128) << 64) | (low as u128)
+    }
+
+    ///Computes hash.
+    #[inline(always)]
+    pub fn digest(&self) -> u64 {
+        //Separating digest mid sized allows us to inline this function, which benefits
+        //code generation when hashing fixed size types and/or if the seed is known.
+        if self.total_len > MID_SIZE_MAX as u64 {
+            self.digest_mid_sized()
+        } else {
+            xxh3_64_internal(self.initialized_buffer(), 0, &Self::DEFAULT_SECRET.0, xxh3_64_long_default)
+        }
+    }
+
+    ///Computes hash as 128bit integer.
+    #[inline(always)]
+    pub fn digest128(&self) -> u128 {
+        //Separating digest mid sized allows us to inline this function, which benefits
+        //code generation when hashing fixed size types and/or if the seed is known.
+        if self.total_len > MID_SIZE_MAX as u64 {
+            self.digest_mid_sized_128()
+        } else {
+            xxh3_128_internal(self.initialized_buffer(), 0, &Self::DEFAULT_SECRET.0, xxh3_128_long_default)
+        }
+    }
+}
+
+impl Default for Xxh3Default {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone)]
 ///XXH3 Streaming algorithm
 ///
 ///Internal state uses rather large buffers, therefore it might be beneficial
@@ -866,7 +1063,7 @@ impl Xxh3 {
     }
 
     ///Computes hash.
-    #[inline]
+    #[inline(always)]
     pub fn digest(&self) -> u64 {
         //Separating digest mid sized allows us to inline this function, which benefits
         //code generation when hashing fixed size types and/or if the seed is known.
@@ -882,7 +1079,7 @@ impl Xxh3 {
     }
 
     ///Computes hash as 128bit integer.
-    #[inline]
+    #[inline(always)]
     pub fn digest128(&self) -> u128 {
         //Separating digest mid sized allows us to inline this function, which benefits
         //code generation when hashing fixed size types and/or if the seed is known.
