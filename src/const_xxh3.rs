@@ -336,23 +336,9 @@ const fn xxh3_128_9to16(input: &[u8], seed: u64, secret: &[u8]) -> u128 {
 
     mul_low = mul_low.wrapping_add((input.len() as u64 - 1) << 54);
     input_hi ^= flip_hi;
-
-    //Separate code for 32bit and bigger targets
-    //It only makes sense when width is multiple of 2, but if necessary change to simple if
-    //Not to mention I'm not sure you can even compile u128 on something like 16bit?
-    #[cfg(any(target_pointer_width = "32", target_pointer_width = "16", target_pointer_width = "8"))]
-    {
-        mul_high = mul_high.wrapping_add(
-            (input_hi & 0xFFFFFFFF00000000).wrapping_add(mult32_to64(input_hi as u32, xxh32::PRIME_2))
-        );
-    }
-
-    #[cfg(not(any(target_pointer_width = "32", target_pointer_width = "16", target_pointer_width = "8")))]
-    {
-        mul_high = mul_high.wrapping_add(
-            input_hi.wrapping_add(mult32_to64(input_hi as u32, xxh32::PRIME_2 - 1))
-        )
-    }
+    mul_high = mul_high.wrapping_add(
+        input_hi.wrapping_add(mult32_to64(input_hi as u32, xxh32::PRIME_2 - 1))
+    );
 
     mul_low ^= mul_high.swap_bytes();
 
