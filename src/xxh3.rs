@@ -129,7 +129,7 @@ fn mix16_b(input: &[[u8; 8]; 2], secret: &[[u8; 8]; 2], seed: u64) -> u64 {
 
 #[inline(always)]
 //Inputs are two chunks of unaligned u64
-//Secret are two chunks of unaligned (u64, u16)
+//Secret are two chunks of unaligned (u64, u64)
 fn mix32_b(lo: &mut u64, hi: &mut u64, input_1: &[[u8; 8]; 2], input_2: &[[u8; 8]; 2], secret: &[[[u8; 8]; 2]; 2], seed: u64) {
     *lo = lo.wrapping_add(mix16_b(input_1, &secret[0], seed));
     *lo ^= u64::from_ne_bytes(input_2[0]).to_le().wrapping_add(u64::from_ne_bytes(input_2[1]).to_le());
