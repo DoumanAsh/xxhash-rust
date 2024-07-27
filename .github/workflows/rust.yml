@@ -93,10 +93,15 @@ jobs:
         CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "valgrind --leak-check=full --error-exitcode=1"
       run: cargo test --release --features xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3
 
+    - name: Valgrind Test(AVX2)
+      env:
+        RUSTFLAGS: "-Ctarget-feature=+avx2"
+        CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "valgrind --leak-check=full --error-exitcode=1"
+      run: cargo test --release --features xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3
+
         #- name: Miri Test(No SSE2)
         #  env:
         #    RUSTFLAGS: "-Ctarget-feature=-sse2"
-        #    MIRIFLAGS: "-Zmiri-tag-raw-pointers"
         #  run: |
         #      cargo +nightly miri test --features xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3
         #      cargo +nightly miri test --release --features xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3

@@ -81,6 +81,9 @@
 #[cfg(feature = "std")]
 extern crate std;
 
+#[cfg(any(feature = "xxh32", feature = "xxh3", feature = "xxh64"))]
+mod utils;
+
 #[cfg(any(feature = "xxh32", feature = "const_xxh32", feature = "xxh3", feature = "const_xxh3"))]
 mod xxh32_common;
 #[cfg(feature = "xxh32")]
