@@ -313,7 +313,7 @@ fn accumulate_512_avx2(acc: &mut Acc, input: &StripeLanes, secret: &StripeLanes)
             let key_vec = _mm256_loadu_si256(secret[idx].as_ptr() as _);
             let data_key = _mm256_xor_si256(data_vec, key_vec);
 
-            let data_key_lo = _mm256_shuffle_epi32(data_key, _mm_shuffle(0, 3, 0, 1));
+            let data_key_lo = _mm256_srli_epi64(data_key, 32);
             let product = _mm256_mul_epu32(data_key, data_key_lo);
 
             let data_swap = _mm256_shuffle_epi32(data_vec, _mm_shuffle(1,0,3,2));
@@ -443,7 +443,7 @@ fn scramble_acc_avx2(acc: &mut Acc, secret: &StripeLanes) {
             let key_vec = _mm256_loadu_si256(secret[idx].as_ptr() as _);
             let data_key = _mm256_xor_si256(data_vec, key_vec);
 
-            let data_key_hi = _mm256_shuffle_epi32(data_key, _mm_shuffle(0, 3, 0, 1));
+            let data_key_hi = _mm256_srli_epi64(data_key, 32);
             let prod_lo = _mm256_mul_epu32(data_key, prime32);
             let prod_hi = _mm256_mul_epu32(data_key_hi, prime32);
             xacc.add(idx).write(_mm256_add_epi64(prod_lo, _mm256_slli_epi64(prod_hi, 32)));
