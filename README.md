@@ -14,7 +14,7 @@ Each algorithm is implemented via feature, allowing precise control over code si
 
 ```toml
 [dependencies.xxhash-rust]
-version = "0.8.5"
+version = "0.8.12"
 features = ["xxh3", "const_xxh3"]
 ```
 
