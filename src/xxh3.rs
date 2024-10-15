@@ -844,6 +844,8 @@ fn xxh3_stateful_digest_internal(acc: &mut Acc, nb_stripes_acc: usize, buffer: &
 ///Default XXH3 Streaming algorithm
 ///
 ///This is optimized version of Xxh3 struct that uses default seed/secret
+///
+///Optimal for use in hash maps
 pub struct Xxh3Default {
     acc: Acc,
     buffer: Aligned64<[mem::MaybeUninit<u8>; INTERNAL_BUFFER_SIZE]>,
@@ -985,6 +987,9 @@ impl std::io::Write for Xxh3Default {
 ///Internal state uses rather large buffers, therefore it might be beneficial
 ///to store hasher on heap rather than stack.
 ///Implementation makes no attempts at that, leaving choice entirely to user.
+///
+///Note that it is better to use [Xxh3Default](struct.Xxh3Default.html) in hash maps
+///due to Rust hash interface which requires to create new instance of hasher every time.
 pub struct Xxh3 {
     acc: Acc,
     custom_secret: Aligned64<[u8; DEFAULT_SECRET_SIZE]>,
