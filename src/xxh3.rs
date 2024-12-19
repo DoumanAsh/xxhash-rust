@@ -515,13 +515,14 @@ fn hash_long_internal_loop(acc: &mut Acc, input: &[u8], secret: &[u8]) {
 
 #[inline(always)]
 fn xxh3_64_1to3(input: &[u8], seed: u64, secret: &[u8]) -> u64 {
-    debug_assert!(input.len() >= 1 && input.len() <= 3);
-    let combo = ((input[0] as u32) << 16)
-                | ((input[input.len() >> 1] as u32) << 24)
-                | (input[input.len() - 1] as u32)
-                | ((input.len() as u32) << 8);
+    let c1; let c2; let c3;
+    unsafe {
+        c1 = *input.get_unchecked(0);
+        c2 = *input.get_unchecked(input.len() >> 1);
+        c3 = *input.get_unchecked(input.len() - 1);
+    };
 
-
+    let combo = (c1 as u32) << 16 | (c2 as u32) << 24 | (c3 as u32) << 0 | (input.len() as u32) << 8;
     let flip = ((read_32le_unaligned(secret, 0) ^ read_32le_unaligned(secret, 4)) as u64).wrapping_add(seed);
     xxh64::avalanche((combo as u64) ^ flip)
 }
@@ -1312,7 +1313,7 @@ fn xxh3_128_1to3(input: &[u8], seed: u64, secret: &[u8]) -> u128 {
         c2 = *input.get_unchecked(input.len() >> 1);
         c3 = *input.get_unchecked(input.len() - 1);
     };
-    let input_lo = (c1 as u32) << 16 | (c2 as u32) << 24 | c3 as u32 | (input.len() as u32) << 8;
+    let input_lo = (c1 as u32) << 16 | (c2 as u32) << 24 | (c3 as u32) << 0 | (input.len() as u32) << 8;
     let input_hi = input_lo.swap_bytes().rotate_left(13);
 
     let flip_lo = (read_32le_unaligned(secret, 0) as u64 ^ read_32le_unaligned(secret, 4) as u64).wrapping_add(seed);
