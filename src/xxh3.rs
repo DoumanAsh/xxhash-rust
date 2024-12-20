@@ -632,27 +632,34 @@ fn xxh3_64_7to128(input: &[u8], seed: u64, secret: &[u8]) -> u64 {
 
 #[inline(never)]
 fn xxh3_64_129to240(input: &[u8], seed: u64, secret: &[u8]) -> u64 {
+    const INITIAL_CHUNK_LEN: usize = 8;
     const START_OFFSET: usize = 3;
     const LAST_OFFSET: usize = 17;
 
     let mut acc = (input.len() as u64).wrapping_mul(xxh64::PRIME_1);
     let nb_rounds = input.len() / 16;
 
-    for idx in 0..8 {
+    let mut idx = 0;
+    let input_chunks = get_aligned_chunk_ref::<[[[u8; 8]; 2]; INITIAL_CHUNK_LEN]>(input, 0);
+    let mut secret_chunks = get_aligned_chunk_ref::<[[[u8; 8]; 2]; INITIAL_CHUNK_LEN]>(secret, 0);
+    while idx < 8 {
         acc = acc.wrapping_add(mix16_b(
-                get_aligned_chunk_ref(input, 16*idx),
-                get_aligned_chunk_ref(secret, 16*idx),
+                &input_chunks[idx],
+                &secret_chunks[idx],
                 seed
         ));
+        idx = idx.wrapping_add(1);
     }
     acc = avalanche(acc);
 
-    for idx in 8..nb_rounds {
+    secret_chunks = get_aligned_chunk_ref::<[[[u8; 8]; 2]; INITIAL_CHUNK_LEN]>(secret, START_OFFSET);
+    while idx < nb_rounds {
         acc = acc.wrapping_add(mix16_b(
                 get_aligned_chunk_ref(input, 16*idx),
-                get_aligned_chunk_ref(secret, 16*(idx-8) + START_OFFSET),
+                &secret_chunks[idx-8],
                 seed
         ));
+        idx = idx.wrapping_add(1);
     }
 
     acc = acc.wrapping_add(mix16_b(
@@ -664,6 +671,7 @@ fn xxh3_64_129to240(input: &[u8], seed: u64, secret: &[u8]) -> u64 {
     avalanche(acc)
 }
 
+#[inline(always)]
 fn xxh3_64_internal(input: &[u8], seed: u64, secret: &[u8], long_hash_fn: LongHashFn) -> u64 {
     debug_assert!(secret.len() >= SECRET_SIZE_MIN);
 
@@ -924,7 +932,7 @@ impl Xxh3Default {
     }
 
     ///Computes hash.
-    #[inline(always)]
+    #[inline]
     pub fn digest(&self) -> u64 {
         //Separating digest mid sized allows us to inline this function, which benefits
         //code generation when hashing fixed size types and/or if the seed is known.
@@ -936,7 +944,7 @@ impl Xxh3Default {
     }
 
     ///Computes hash as 128bit integer.
-    #[inline(always)]
+    #[inline]
     pub fn digest128(&self) -> u128 {
         //Separating digest mid sized allows us to inline this function, which benefits
         //code generation when hashing fixed size types and/or if the seed is known.
@@ -1085,7 +1093,7 @@ impl Xxh3 {
     }
 
     ///Computes hash.
-    #[inline(always)]
+    #[inline]
     pub fn digest(&self) -> u64 {
         //Separating digest mid sized allows us to inline this function, which benefits
         //code generation when hashing fixed size types and/or if the seed is known.
@@ -1101,7 +1109,7 @@ impl Xxh3 {
     }
 
     ///Computes hash as 128bit integer.
-    #[inline(always)]
+    #[inline]
     pub fn digest128(&self) -> u128 {
         //Separating digest mid sized allows us to inline this function, which benefits
         //code generation when hashing fixed size types and/or if the seed is known.
@@ -1434,6 +1442,7 @@ fn xxh3_128_129to240(input: &[u8], seed: u64, secret: &[u8]) -> u128 {
     avalanche(result_lo) as u128 | 0u128.wrapping_sub(avalanche(result_hi) as u128) << 64
 }
 
+#[inline(always)]
 fn xxh3_128_internal(input: &[u8], seed: u64, secret: &[u8], long_hash_fn: LongHashFn128) -> u128 {
     debug_assert!(secret.len() >= SECRET_SIZE_MIN);
 
