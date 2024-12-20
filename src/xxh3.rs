@@ -932,7 +932,6 @@ impl Xxh3Default {
     }
 
     ///Computes hash.
-    #[inline]
     pub fn digest(&self) -> u64 {
         //Separating digest mid sized allows us to inline this function, which benefits
         //code generation when hashing fixed size types and/or if the seed is known.
@@ -944,7 +943,6 @@ impl Xxh3Default {
     }
 
     ///Computes hash as 128bit integer.
-    #[inline]
     pub fn digest128(&self) -> u128 {
         //Separating digest mid sized allows us to inline this function, which benefits
         //code generation when hashing fixed size types and/or if the seed is known.
@@ -1093,7 +1091,6 @@ impl Xxh3 {
     }
 
     ///Computes hash.
-    #[inline]
     pub fn digest(&self) -> u64 {
         //Separating digest mid sized allows us to inline this function, which benefits
         //code generation when hashing fixed size types and/or if the seed is known.
@@ -1109,7 +1106,6 @@ impl Xxh3 {
     }
 
     ///Computes hash as 128bit integer.
-    #[inline]
     pub fn digest128(&self) -> u128 {
         //Separating digest mid sized allows us to inline this function, which benefits
         //code generation when hashing fixed size types and/or if the seed is known.
@@ -1457,10 +1453,12 @@ fn xxh3_128_internal(input: &[u8], seed: u64, secret: &[u8], long_hash_fn: LongH
     }
 }
 
+#[inline(never)]
 fn xxh3_128_long_default(input: &[u8], _seed: u64, _secret: &[u8]) -> u128 {
     xxh3_128_long_impl(input, &DEFAULT_SECRET)
 }
 
+#[inline(never)]
 fn xxh3_128_long_with_seed(input: &[u8], seed: u64, _secret: &[u8]) -> u128 {
     match seed {
         0 => xxh3_128_long_impl(input, &DEFAULT_SECRET),
@@ -1468,6 +1466,7 @@ fn xxh3_128_long_with_seed(input: &[u8], seed: u64, _secret: &[u8]) -> u128 {
     }
 }
 
+#[inline(never)]
 fn xxh3_128_long_with_secret(input: &[u8], _seed: u64, secret: &[u8]) -> u128 {
     xxh3_128_long_impl(input, secret)
 }
