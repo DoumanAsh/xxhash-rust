@@ -640,23 +640,20 @@ fn xxh3_64_129to240(input: &[u8], seed: u64, secret: &[u8]) -> u64 {
     let nb_rounds = input.len() / 16;
 
     let mut idx = 0;
-    let input_chunks = get_aligned_chunk_ref::<[[[u8; 8]; 2]; INITIAL_CHUNK_LEN]>(input, 0);
-    let mut secret_chunks = get_aligned_chunk_ref::<[[[u8; 8]; 2]; INITIAL_CHUNK_LEN]>(secret, 0);
-    while idx < 8 {
+    while idx < INITIAL_CHUNK_LEN {
         acc = acc.wrapping_add(mix16_b(
-                &input_chunks[idx],
-                &secret_chunks[idx],
+                get_aligned_chunk_ref(input, 16*idx),
+                get_aligned_chunk_ref(secret, 16*idx),
                 seed
         ));
         idx = idx.wrapping_add(1);
     }
     acc = avalanche(acc);
 
-    secret_chunks = get_aligned_chunk_ref::<[[[u8; 8]; 2]; INITIAL_CHUNK_LEN]>(secret, START_OFFSET);
     while idx < nb_rounds {
         acc = acc.wrapping_add(mix16_b(
                 get_aligned_chunk_ref(input, 16*idx),
-                &secret_chunks[idx-8],
+                get_aligned_chunk_ref(secret, 16*(idx-8) + START_OFFSET),
                 seed
         ));
         idx = idx.wrapping_add(1);
