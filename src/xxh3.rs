@@ -71,6 +71,12 @@ fn _mm_prefetch(_ptr: *const i8, _offset: isize) {
     }
 }
 
+macro_rules! to_u128 {
+    ($lo:expr, $hi:expr) => {
+        ($lo) as u128 | ((($hi) as u128) << 64)
+    };
+}
+
 macro_rules! slice_offset_ptr {
     ($slice:expr, $offset:expr) => {{
         let slice = $slice;
@@ -116,7 +122,7 @@ fn merge_accs(acc: &mut Acc, secret: &[[[u8; 8]; 2]; 4], mut result: u64) -> u64
     avalanche(result)
 }
 
-#[inline]
+#[inline(always)]
 fn mix16_b(input: &[[u8; 8]; 2], secret: &[[u8; 8]; 2], seed: u64) -> u64 {
     let mut input_lo = u64::from_ne_bytes(input[0]).to_le();
     let mut input_hi = u64::from_ne_bytes(input[1]).to_le();
@@ -632,38 +638,44 @@ fn xxh3_64_7to128(input: &[u8], seed: u64, secret: &[u8]) -> u64 {
 
 #[inline(never)]
 fn xxh3_64_129to240(input: &[u8], seed: u64, secret: &[u8]) -> u64 {
-    const INITIAL_CHUNK_LEN: usize = 8;
     const START_OFFSET: usize = 3;
     const LAST_OFFSET: usize = 17;
 
     let mut acc = (input.len() as u64).wrapping_mul(xxh64::PRIME_1);
     let nb_rounds = input.len() / 16;
+    debug_assert!(nb_rounds >= 8);
 
     let mut idx = 0;
-    while idx < INITIAL_CHUNK_LEN {
-        acc = acc.wrapping_add(mix16_b(
+    while idx < 8 {
+        acc = acc.wrapping_add(
+            mix16_b(
                 get_aligned_chunk_ref(input, 16*idx),
                 get_aligned_chunk_ref(secret, 16*idx),
                 seed
-        ));
+            )
+        );
         idx = idx.wrapping_add(1);
     }
     acc = avalanche(acc);
 
     while idx < nb_rounds {
-        acc = acc.wrapping_add(mix16_b(
+        acc = acc.wrapping_add(
+            mix16_b(
                 get_aligned_chunk_ref(input, 16*idx),
                 get_aligned_chunk_ref(secret, 16*(idx-8) + START_OFFSET),
                 seed
-        ));
+            )
+        );
         idx = idx.wrapping_add(1);
     }
 
-    acc = acc.wrapping_add(mix16_b(
-        get_aligned_chunk_ref(input, input.len()-16),
-        get_aligned_chunk_ref(secret, SECRET_SIZE_MIN-LAST_OFFSET),
-        seed
-    ));
+    acc = acc.wrapping_add(
+        mix16_b(
+            get_aligned_chunk_ref(input, input.len()-16),
+            get_aligned_chunk_ref(secret, SECRET_SIZE_MIN-LAST_OFFSET),
+            seed
+        )
+    );
 
     avalanche(acc)
 }
@@ -1280,7 +1292,7 @@ fn xxh3_128_9to16(input: &[u8], seed: u64, secret: &[u8]) -> u128 {
         mul_high.wrapping_mul(xxh64::PRIME_2)
     );
 
-    avalanche(result_low) as u128 | (avalanche(result_hi) as u128) << 64
+    to_u128!(avalanche(result_low), avalanche(result_hi))
 }
 
 #[inline(always)]
@@ -1380,12 +1392,18 @@ fn xxh3_128_7to128(input: &[u8], seed: u64, secret: &[u8]) -> u128 {
         seed
     );
 
-    let result_lo = lo.wrapping_add(hi);
-    let result_hi = lo.wrapping_mul(xxh64::PRIME_1)
-                      .wrapping_add(hi.wrapping_mul(xxh64::PRIME_4))
-                      .wrapping_add((input.len() as u64).wrapping_sub(seed).wrapping_mul(xxh64::PRIME_2));
-
-    avalanche(result_lo) as u128 | (0u64.wrapping_sub(avalanche(result_hi)) as u128) << 64
+    to_u128!(
+        avalanche(
+            lo.wrapping_add(hi)
+        ),
+        0u64.wrapping_sub(
+            avalanche(
+                lo.wrapping_mul(xxh64::PRIME_1)
+                  .wrapping_add(hi.wrapping_mul(xxh64::PRIME_4))
+                  .wrapping_add((input.len() as u64).wrapping_sub(seed).wrapping_mul(xxh64::PRIME_2))
+            )
+        )
+    )
 }
 
 #[inline(never)]
@@ -1398,26 +1416,29 @@ fn xxh3_128_129to240(input: &[u8], seed: u64, secret: &[u8]) -> u128 {
     let mut lo = (input.len() as u64).wrapping_mul(xxh64::PRIME_1);
     let mut hi = 0;
 
-    for idx in 0..4 {
-        let idx = 32 * idx;
+    let mut idx = 0;
+    while idx < 4 {
+        let offset_idx = 32 * idx;
         mix32_b(&mut lo, &mut hi,
-            get_aligned_chunk_ref(input, idx),
-            get_aligned_chunk_ref(input, idx + 16),
-            get_aligned_chunk_ref(secret, idx),
+            get_aligned_chunk_ref(input, offset_idx),
+            get_aligned_chunk_ref(input, offset_idx + 16),
+            get_aligned_chunk_ref(secret, offset_idx),
             seed
         );
+        idx = idx.wrapping_add(1);
     }
 
     lo = avalanche(lo);
     hi = avalanche(hi);
 
-    for idx in 4..nb_rounds {
+    while idx < nb_rounds {
         mix32_b(&mut lo, &mut hi,
             get_aligned_chunk_ref(input, 32 * idx),
             get_aligned_chunk_ref(input, (32 * idx) + 16),
             get_aligned_chunk_ref(secret, START_OFFSET.wrapping_add(32 * (idx - 4))),
             seed
         );
+        idx = idx.wrapping_add(1);
     }
 
     mix32_b(&mut lo, &mut hi,
@@ -1427,12 +1448,18 @@ fn xxh3_128_129to240(input: &[u8], seed: u64, secret: &[u8]) -> u128 {
         0u64.wrapping_sub(seed)
     );
 
-    let result_lo = lo.wrapping_add(hi);
-    let result_hi = lo.wrapping_mul(xxh64::PRIME_1)
-                      .wrapping_add(hi.wrapping_mul(xxh64::PRIME_4))
-                      .wrapping_add((input.len() as u64).wrapping_sub(seed).wrapping_mul(xxh64::PRIME_2));
-
-    avalanche(result_lo) as u128 | 0u128.wrapping_sub(avalanche(result_hi) as u128) << 64
+    to_u128!(
+        avalanche(
+            lo.wrapping_add(hi)
+        ),
+        0u64.wrapping_sub(
+            avalanche(
+                lo.wrapping_mul(xxh64::PRIME_1)
+                  .wrapping_add(hi.wrapping_mul(xxh64::PRIME_4))
+                  .wrapping_add((input.len() as u64).wrapping_sub(seed).wrapping_mul(xxh64::PRIME_2))
+            )
+        )
+    )
 }
 
 #[inline(always)]

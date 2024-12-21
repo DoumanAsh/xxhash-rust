@@ -30,14 +30,14 @@ pub const fn xorshift64(value: u64, shift: u64) -> u64 {
     value ^ (value >> shift)
 }
 
-#[inline]
+#[inline(always)]
 pub const fn avalanche(mut value: u64) -> u64 {
     value = xorshift64(value, 37);
     value = value.wrapping_mul(0x165667919E3779F9);
     xorshift64(value, 32)
 }
 
-#[inline]
+#[inline(always)]
 pub const fn strong_avalanche(mut value: u64, len: u64) -> u64 {
     value ^= value.rotate_left(49) ^ value.rotate_left(24);
     value = value.wrapping_mul(0x9FB21C651E98DF25);
@@ -46,13 +46,13 @@ pub const fn strong_avalanche(mut value: u64, len: u64) -> u64 {
     xorshift64(value, 28)
 }
 
-#[inline]
+#[inline(always)]
 pub const fn mul64_to128(left: u64, right: u64) -> (u64, u64) {
     let product = left as u128 * right as u128;
     (product as u64, (product >> 64) as u64)
 }
 
-#[inline]
+#[inline(always)]
 pub const fn mul128_fold64(left: u64, right: u64) -> u64 {
     let (low, high) = mul64_to128(left, right);
     low ^ high
