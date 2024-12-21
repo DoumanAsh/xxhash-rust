@@ -77,6 +77,7 @@
 #![no_std]
 #![warn(missing_docs)]
 #![cfg_attr(feature = "cargo-clippy", allow(clippy::style))]
+#![cfg_attr(feature = "unstable", feature(stdarch_x86_avx512))]
 
 #[cfg(feature = "std")]
 extern crate std;
