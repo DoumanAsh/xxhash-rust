@@ -513,7 +513,17 @@ fn hash_long_internal_loop(acc: &mut Acc, input: &[u8], secret: &[u8]) {
 
     let nb_stripes = ((input.len() - 1) - (block_len * nb_blocks)) / STRIPE_LEN;
     debug_assert!(nb_stripes <= (secret.len() / SECRET_CONSUME_RATE));
-    accumulate_loop(acc, slice_offset_ptr!(input, nb_blocks * block_len), secret.as_ptr(), nb_stripes);
+    //accumulate_loop(acc, slice_offset_ptr!(input, nb_blocks * block_len), secret.as_ptr(), nb_stripes);
+    for idx in 0..nb_stripes {
+        unsafe {
+            let input = slice_offset_ptr!(input, nb_blocks * block_len + idx * STRIPE_LEN);
+
+            accumulate_512(acc,
+                &*(input as *const _),
+                &*(secret.as_ptr().add(idx * SECRET_CONSUME_RATE) as *const _)
+            );
+        }
+    }
 
     //last stripe
     accumulate_512(acc, get_aligned_chunk_ref(input, input.len() - STRIPE_LEN), get_aligned_chunk_ref(secret, secret.len() - STRIPE_LEN - SECRET_LASTACC_START));
