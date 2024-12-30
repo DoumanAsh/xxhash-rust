@@ -58,18 +58,18 @@ const fn mult32_to64(left: u32, right: u32) -> u64 {
     (left as u64).wrapping_mul(right as u64)
 }
 
-#[inline(always)]
-fn _mm_prefetch(_ptr: *const i8, _offset: isize) {
-    #[cfg(target_arch = "x86")]
-    unsafe {
-        core::arch::x86::_mm_prefetch(_ptr.offset(_offset), core::arch::x86::_MM_HINT_T0);
-    }
-
-    #[cfg(target_arch = "x86_64")]
-    unsafe {
-        core::arch::x86_64::_mm_prefetch(_ptr.offset(_offset), core::arch::x86_64::_MM_HINT_T0);
-    }
-}
+//#[inline(always)]
+//fn _mm_prefetch(_ptr: *const i8, _offset: isize) {
+//    #[cfg(target_arch = "x86")]
+//    unsafe {
+//        core::arch::x86::_mm_prefetch(_ptr.offset(_offset), core::arch::x86::_MM_HINT_T0);
+//    }
+//
+//    #[cfg(target_arch = "x86_64")]
+//    unsafe {
+//        core::arch::x86_64::_mm_prefetch(_ptr.offset(_offset), core::arch::x86_64::_MM_HINT_T0);
+//    }
+//}
 
 macro_rules! to_u128 {
     ($lo:expr, $hi:expr) => {
@@ -487,7 +487,8 @@ fn accumulate_loop(acc: &mut Acc, input: *const u8, secret: *const u8, nb_stripe
     for idx in 0..nb_stripes {
         unsafe {
             let input = input.add(idx * STRIPE_LEN);
-            _mm_prefetch(input as _, 320);
+            //Miri complains about it for dumb reason so for not turn off prefetch
+            //_mm_prefetch(input as _, 320);
 
             accumulate_512(acc,
                 &*(input as *const _),
@@ -513,17 +514,7 @@ fn hash_long_internal_loop(acc: &mut Acc, input: &[u8], secret: &[u8]) {
 
     let nb_stripes = ((input.len() - 1) - (block_len * nb_blocks)) / STRIPE_LEN;
     debug_assert!(nb_stripes <= (secret.len() / SECRET_CONSUME_RATE));
-    //accumulate_loop(acc, slice_offset_ptr!(input, nb_blocks * block_len), secret.as_ptr(), nb_stripes);
-    for idx in 0..nb_stripes {
-        unsafe {
-            let input = slice_offset_ptr!(input, nb_blocks * block_len + idx * STRIPE_LEN);
-
-            accumulate_512(acc,
-                &*(input as *const _),
-                &*(secret.as_ptr().add(idx * SECRET_CONSUME_RATE) as *const _)
-            );
-        }
-    }
+    accumulate_loop(acc, slice_offset_ptr!(input, nb_blocks * block_len), secret.as_ptr(), nb_stripes);
 
     //last stripe
     accumulate_512(acc, get_aligned_chunk_ref(input, input.len() - STRIPE_LEN), get_aligned_chunk_ref(secret, secret.len() - STRIPE_LEN - SECRET_LASTACC_START));

@@ -11,6 +11,7 @@ pub const fn get_aligned_chunk_ref<T: Copy>(input: &[u8], offset: usize) -> &T {
     }
 }
 
+#[allow(unused)]
 #[inline(always)]
 pub const fn get_aligned_chunk<T: Copy>(input: &[u8], offset: usize) -> T {
     *get_aligned_chunk_ref(input, offset)
