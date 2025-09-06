@@ -13,19 +13,19 @@ use crate::utils::{Buffer, get_unaligned_chunk, get_aligned_chunk_ref};
 // Code is as close to original C implementation as possible
 // It does make it look ugly, but it is fast and easy to update once xxhash gets new version.
 
-#[cfg(all(any(target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128")), not(any(target_feature = "avx2", all(feature = "unstable", target_feature = "avx512f")))))]
+#[cfg(all(any(target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128")), not(any(target_feature = "avx2", target_feature = "avx512f"))))]
 #[repr(align(16))]
 #[derive(Clone)]
 struct Acc([u64; ACC_NB]);
-#[cfg(all(target_feature = "avx2", not(all(feature = "unstable", target_feature = "avx512f"))))]
+#[cfg(all(target_feature = "avx2", not(target_feature = "avx512f")))]
 #[repr(align(32))]
 #[derive(Clone)]
 struct Acc([u64; ACC_NB]);
-#[cfg(all(feature = "unstable", target_feature = "avx512f"))]
+#[cfg(target_feature = "avx512f")]
 #[repr(align(64))]
 #[derive(Clone)]
 struct Acc([u64; ACC_NB]);
-#[cfg(not(any(all(feature = "unstable", target_feature = "avx512f"), target_feature = "avx2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"), target_feature = "sse2")))]
+#[cfg(not(any(target_feature = "avx512f", target_feature = "avx2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"), target_feature = "sse2")))]
 #[repr(align(8))]
 #[derive(Clone)]
 struct Acc([u64; ACC_NB]);
@@ -40,17 +40,17 @@ type LongHashFn128 = fn(&[u8], u64, &[u8]) -> u128;
 
 #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
 type StripeLanes = [[u8; mem::size_of::<core::arch::wasm32::v128>()]; STRIPE_LEN / mem::size_of::<core::arch::wasm32::v128>()];
-#[cfg(all(feature = "unstable", target_arch = "x86", target_feature = "avx512f"))]
+#[cfg(all(target_arch = "x86", target_feature = "avx512f"))]
 type StripeLanes = [[u8; mem::size_of::<core::arch::x86::__m512i>()]; STRIPE_LEN / mem::size_of::<core::arch::x86::__m512i>()];
-#[cfg(all(feature = "unstable", target_arch = "x86_64", target_feature = "avx512f"))]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 type StripeLanes = [[u8; mem::size_of::<core::arch::x86_64::__m512i>()]; STRIPE_LEN / mem::size_of::<core::arch::x86_64::__m512i>()];
-#[cfg(all(target_arch = "x86", target_feature = "avx2", not(all(feature = "unstable", target_feature = "avx512f"))))]
+#[cfg(all(target_arch = "x86", target_feature = "avx2", not(target_feature = "avx512f")))]
 type StripeLanes = [[u8; mem::size_of::<core::arch::x86::__m256i>()]; STRIPE_LEN / mem::size_of::<core::arch::x86::__m256i>()];
-#[cfg(all(target_arch = "x86_64", target_feature = "avx2", not(all(feature = "unstable", target_feature = "avx512f"))))]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2", not(target_feature = "avx512f")))]
 type StripeLanes = [[u8; mem::size_of::<core::arch::x86_64::__m256i>()]; STRIPE_LEN / mem::size_of::<core::arch::x86_64::__m256i>()];
-#[cfg(all(target_arch = "x86", target_feature = "sse2", not(any(target_feature = "avx2", all(feature = "unstable", target_feature = "avx512f")))))]
+#[cfg(all(target_arch = "x86", target_feature = "sse2", not(any(target_feature = "avx2", target_feature = "avx512f"))))]
 type StripeLanes = [[u8; mem::size_of::<core::arch::x86::__m128i>()]; STRIPE_LEN / mem::size_of::<core::arch::x86::__m128i>()];
-#[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(any(target_feature = "avx2", all(feature = "unstable", target_feature = "avx512f")))))]
+#[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(any(target_feature = "avx2", target_feature = "avx512f"))))]
 type StripeLanes = [[u8; mem::size_of::<core::arch::x86_64::__m128i>()]; STRIPE_LEN / mem::size_of::<core::arch::x86_64::__m128i>()];
 #[cfg(target_feature = "neon")]
 type StripeLanes = [[u8; mem::size_of::<core::arch::aarch64::uint8x16_t>()]; STRIPE_LEN / mem::size_of::<core::arch::aarch64::uint8x16_t>()];
@@ -289,7 +289,7 @@ fn accumulate_512_neon(acc: &mut Acc, input: &StripeLanes, secret: &StripeLanes)
     }
 }
 
-#[cfg(all(target_feature = "sse2", not(any(target_feature = "avx2", all(feature = "unstable", target_feature = "avx512f")))))]
+#[cfg(all(target_feature = "sse2", not(any(target_feature = "avx2", target_feature = "avx512f"))))]
 fn accumulate_512_sse2(acc: &mut Acc, input: &StripeLanes, secret: &StripeLanes) {
     unsafe {
         #[cfg(target_arch = "x86")]
@@ -314,7 +314,7 @@ fn accumulate_512_sse2(acc: &mut Acc, input: &StripeLanes, secret: &StripeLanes)
     }
 }
 
-#[cfg(all(target_feature = "avx2", not(all(feature = "unstable", target_feature = "avx512f"))))]
+#[cfg(all(target_feature = "avx2", not(target_feature = "avx512f")))]
 fn accumulate_512_avx2(acc: &mut Acc, input: &StripeLanes, secret: &StripeLanes) {
     unsafe {
         #[cfg(target_arch = "x86")]
@@ -339,7 +339,7 @@ fn accumulate_512_avx2(acc: &mut Acc, input: &StripeLanes, secret: &StripeLanes)
     }
 }
 
-#[cfg(all(feature = "unstable", target_feature = "avx512f"))]
+#[cfg(target_feature = "avx512f")]
 fn accumulate_512_avx512(acc: &mut Acc, input: &StripeLanes, secret: &StripeLanes) {
     unsafe {
         #[cfg(target_arch = "x86")]
@@ -364,7 +364,7 @@ fn accumulate_512_avx512(acc: &mut Acc, input: &StripeLanes, secret: &StripeLane
     }
 }
 
-#[cfg(not(any(all(feature = "unstable", target_feature = "avx512f"), target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
+#[cfg(not(any(target_feature = "avx512f", target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
 fn accumulate_512_scalar(acc: &mut Acc, input: &[[u8; 8]; ACC_NB], secret: &[[u8; 8]; ACC_NB]) {
     for idx in 0..ACC_NB {
         let data_val = u64::from_ne_bytes(input[idx]).to_le();
@@ -379,13 +379,13 @@ fn accumulate_512_scalar(acc: &mut Acc, input: &[[u8; 8]; ACC_NB], secret: &[[u8
 use accumulate_512_wasm as accumulate_512;
 #[cfg(target_feature = "neon")]
 use accumulate_512_neon as accumulate_512;
-#[cfg(all(target_feature = "sse2", not(any(target_feature = "avx2", all(feature = "unstable", target_feature = "avx512f")))))]
+#[cfg(all(target_feature = "sse2", not(any(target_feature = "avx2", target_feature = "avx512f"))))]
 use accumulate_512_sse2 as accumulate_512;
-#[cfg(all(target_feature = "avx2", not(all(feature = "unstable", target_feature = "avx512f"))))]
+#[cfg(all(target_feature = "avx2", not(target_feature = "avx512f")))]
 use accumulate_512_avx2 as accumulate_512;
-#[cfg(all(feature = "unstable", target_feature = "avx512f"))]
+#[cfg(target_feature = "avx512f")]
 use accumulate_512_avx512 as accumulate_512;
-#[cfg(not(any(all(feature = "unstable", target_feature = "avx512f"), target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
+#[cfg(not(any(target_feature = "avx512f", target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
 use accumulate_512_scalar as accumulate_512;
 
 #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
@@ -440,7 +440,7 @@ fn scramble_acc_neon(acc: &mut Acc, secret: &StripeLanes) {
     }
 }
 
-#[cfg(all(target_feature = "sse2", not(any(target_feature = "avx2", all(feature = "unstable", target_feature = "avx512f")))))]
+#[cfg(all(target_feature = "sse2", not(any(target_feature = "avx2", target_feature = "avx512f"))))]
 fn scramble_acc_sse2(acc: &mut Acc, secret: &StripeLanes) {
     unsafe {
         #[cfg(target_arch = "x86")]
@@ -467,7 +467,7 @@ fn scramble_acc_sse2(acc: &mut Acc, secret: &StripeLanes) {
     }
 }
 
-#[cfg(all(target_feature = "avx2", not(all(feature = "unstable", target_feature = "avx512f"))))]
+#[cfg(all(target_feature = "avx2", not(target_feature = "avx512f")))]
 fn scramble_acc_avx2(acc: &mut Acc, secret: &StripeLanes) {
     unsafe {
         #[cfg(target_arch = "x86")]
@@ -494,7 +494,7 @@ fn scramble_acc_avx2(acc: &mut Acc, secret: &StripeLanes) {
     }
 }
 
-#[cfg(all(feature = "unstable", target_feature = "avx512f"))]
+#[cfg(target_feature = "avx512f")]
 fn scramble_acc_avx512(acc: &mut Acc, secret: &StripeLanes) {
     unsafe {
         #[cfg(target_arch = "x86")]
@@ -520,7 +520,7 @@ fn scramble_acc_avx512(acc: &mut Acc, secret: &StripeLanes) {
     }
 }
 
-#[cfg(not(any(all(feature = "unstable", target_feature = "avx512f"), target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
+#[cfg(not(any(target_feature = "avx512f", target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
 fn scramble_acc_scalar(acc: &mut Acc, secret: &[[u8; 8]; ACC_NB]) {
     for idx in 0..secret.len() {
         let key = u64::from_ne_bytes(secret[idx]).to_le();
@@ -536,16 +536,16 @@ use scramble_acc_wasm as scramble_acc;
 #[cfg(target_feature = "neon")]
 use scramble_acc_neon as scramble_acc;
 
-#[cfg(all(target_feature = "sse2", not(any(target_feature = "avx2", all(feature = "unstable", target_feature = "avx512f")))))]
+#[cfg(all(target_feature = "sse2", not(any(target_feature = "avx2", target_feature = "avx512f"))))]
 use scramble_acc_sse2 as scramble_acc;
 
-#[cfg(all(target_feature = "avx2", not(all(feature = "unstable", target_feature = "avx512f"))))]
+#[cfg(all(target_feature = "avx2", not(target_feature = "avx512f")))]
 use scramble_acc_avx2 as scramble_acc;
 
-#[cfg(all(feature = "unstable", target_feature = "avx512f"))]
+#[cfg(target_feature = "avx512f")]
 use scramble_acc_avx512 as scramble_acc;
 
-#[cfg(not(any(all(feature = "unstable", target_feature = "avx512f"), target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
+#[cfg(not(any(target_feature = "avx512f", target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
 use scramble_acc_scalar as scramble_acc;
 
 #[inline(always)]
