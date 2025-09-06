@@ -48,6 +48,7 @@ By default all features are off.
 - `const_xxh64` - `const fn` version of `xxh64` algorithm
 - `xxh3` - Enables `xxh3` family of algorithms, superior to `xxh32` and `xxh64` in terms of performance.
 - `const_xxh3` - `const fn` version of `xxh3` algorithm
+- `unstable` - Enables AVX512 implementation which requires an unstable nightly feature
 
 ## HW acceleration
 
@@ -58,6 +59,7 @@ Used SIMD acceleration:
 
 - SSE2 - widely available, can be safely enabled in 99% of cases. Enabled by default in `x86_64` targets.
 - AVX2;
+- AVX512 - needs nightly compiler and enabling the `unstable` feature.
 - Neon - Enabled by default on aarch64 targets (most likely)
 - Wasm SIMD128 - Has to be enabled via rust flag: `-Ctarget-feature=+simd128`
 

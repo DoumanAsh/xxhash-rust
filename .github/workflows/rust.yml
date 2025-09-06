@@ -128,16 +128,17 @@ jobs:
 
     - name: Install Wasi runtime
       run: |
-        curl -L https://github.com/bytecodealliance/wasmtime/releases/download/v17.0.1/wasmtime-v17.0.1-x86_64-linux.tar.xz > wasmtime.tar.xz
+        curl -L https://github.com/bytecodealliance/wasmtime/releases/download/v36.0.2/wasmtime-v36.0.2-x86_64-linux.tar.xz > wasmtime.tar.xz
         mkdir $HOME/wasmtime
         tar -xf wasmtime.tar.xz -C $HOME/wasmtime --strip-components 1
         echo "$HOME/wasmtime/" >> $GITHUB_PATH
-        cargo install cargo-wasi
+        rustup target add wasm32-wasip1
 
     - name: Test simd128
       env:
+        CARGO_TARGET_WASM32_WASIP1_RUNNER: "wasmtime"
         RUSTFLAGS: "-Ctarget-feature=+simd128"
-      run: cargo wasi test --test assert_correctness --features xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3 -- --nocapture
+      run: cargo test --target wasm32-wasip1 --test assert_correctness --features xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3 -- --nocapture
 
   cross-platform-test:
     needs: [full-test, min-rust-check]
