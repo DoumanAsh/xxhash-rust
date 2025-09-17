@@ -108,37 +108,13 @@ jobs:
 
   wasm-platform-test:
     needs: [full-test, min-rust-check]
-    runs-on: ubuntu-latest
-    container: ghcr.io/webassembly/wasi-sdk
     if: github.event.pull_request.draft == false
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Install system packages
-      run: apt-get update && apt-get install -y curl xz-utils
-
-    - name: Install Rust Unix
-      run: |
-        if rustup --version >/dev/null 2>&1; then
-            rustup update
-        else
-             curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain stable
-             echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-        fi
-
-    - name: Install Wasi runtime
-      run: |
-        curl -L https://github.com/bytecodealliance/wasmtime/releases/download/v36.0.2/wasmtime-v36.0.2-x86_64-linux.tar.xz > wasmtime.tar.xz
-        mkdir $HOME/wasmtime
-        tar -xf wasmtime.tar.xz -C $HOME/wasmtime --strip-components 1
-        echo "$HOME/wasmtime/" >> $GITHUB_PATH
-        rustup target add wasm32-wasip1
-
-    - name: Test simd128
-      env:
-        CARGO_TARGET_WASM32_WASIP1_RUNNER: "wasmtime"
-        RUSTFLAGS: "-Ctarget-feature=+simd128"
-      run: cargo test --target wasm32-wasip1 --test assert_correctness --features xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3 -- --nocapture
+    uses:  DoumanAsh/douman-ci/.github/workflows/wasm-rust.yml@master
+    with:
+      # WASI runtime doesn't support all necessary functionality of std library yet so limit test suite
+      cargo-test-args: "--test assert_correctness"
+      cargo-features: "xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3"
+      wasm-simd: true
 
   cross-platform-test:
     needs: [full-test, min-rust-check]
