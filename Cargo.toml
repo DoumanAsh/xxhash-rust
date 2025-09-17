@@ -30,7 +30,7 @@ xxh3 = [] # Enable xxh3 implementation
 const_xxh3 = [] # Enable const xxh3 implementation
 
 [dev-dependencies]
-getrandom = "0.2"
+getrandom = "0.3"
 xxhash-c-sys = "0.8.6"
 
 [package.metadata.docs.rs]
