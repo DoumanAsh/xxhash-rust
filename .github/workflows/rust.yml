@@ -109,7 +109,7 @@ jobs:
   wasm-platform-test:
     needs: [full-test, min-rust-check]
     if: github.event.pull_request.draft == false
-    uses:  DoumanAsh/douman-ci/.github/workflows/wasm-rust.yml@master
+    uses: DoumanAsh/douman-ci/.github/workflows/wasm-rust.yml@master
     with:
       # WASI runtime doesn't support all necessary functionality of std library yet so limit test suite
       cargo-test-args: "--test assert_correctness"
@@ -118,7 +118,6 @@ jobs:
 
   cross-platform-test:
     needs: [full-test, min-rust-check]
-    runs-on: ubuntu-latest
     if: github.event.pull_request.draft == false
     strategy:
       matrix:
@@ -131,22 +130,9 @@ jobs:
           #"mips64-unknown-linux-gnuabi64"
         ]
 
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Install Rust Unix
-      run: |
-        if rustup --version >/dev/null 2>&1; then
-            rustup update
-        else
-             curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain stable
-             echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-        fi
-
-    - name: Install Cross
-      run: |
-        curl -L https://github.com/cross-rs/cross/releases/download/v0.2.5/cross-x86_64-unknown-linux-musl.tar.gz | tar xfz -
-        cp cross $HOME/.cargo/bin
-
-    - name: Test ${{ matrix.target }}
-      run: cross test --features xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3 --release --target ${{ matrix.target }}
+    uses: DoumanAsh/douman-ci/.github/workflows/cross-rust.yml@master
+    with:
+      cargo-features: "xxh32,const_xxh32,xxh64,const_xxh64,xxh3,const_xxh3"
+      cargo-test-debug: false
+      cargo-test-release: true
+      cargo-target: ${{ matrix.target }}
