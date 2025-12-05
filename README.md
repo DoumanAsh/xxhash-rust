@@ -27,10 +27,7 @@ use xxhash_rust::xxh3::xxh3_64;
 const TEST: u64 = const_xxh3(b"TEST");
 
 fn test_input(text: &str) -> bool {
-    match xxh3_64(text.as_bytes()) {
-        TEST => true,
-        _ => false
-    }
+    xxh3_64(text.as_bytes()) == TEST
 }
 
 assert!(!test_input("tEST"));
