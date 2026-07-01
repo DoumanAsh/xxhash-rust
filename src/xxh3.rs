@@ -55,6 +55,34 @@ type StripeLanes = [[u8; mem::size_of::<core::arch::x86_64::__m128i>()]; STRIPE_
 #[cfg(target_feature = "neon")]
 type StripeLanes = [[u8; mem::size_of::<core::arch::aarch64::uint8x16_t>()]; STRIPE_LEN / mem::size_of::<core::arch::aarch64::uint8x16_t>()];
 
+///Secret validation wrapper
+pub struct SecretInput<T>(T);
+
+impl<T: AsRef<[u8]>> SecretInput<T> {
+    #[inline(always)]
+    ///Creates secret input validating its length is sufficient
+    pub fn try_new(input: T) -> Option<Self> {
+        if input.as_ref().len() >= SECRET_SIZE_MIN {
+            Some(Self(input))
+        } else {
+            None
+        }
+    }
+}
+
+impl<const N: usize> SecretInput<[u8; N]> {
+    ///Creates secret input from static array, suitable to be used at compile time.
+    ///
+    ///On insufficient length it shall panic.
+    ///
+    ///Prefer to generate secret at compile time using [const_custom_default_secret](../const_xxh3/fn.const_custom_default_secret.html)
+    pub const fn new(input: [u8; N]) -> Self {
+        assert!(N >= SECRET_SIZE_MIN, "input length must be equal or greater than SECRET_SIZE_MIN=136");
+
+        Self(input)
+    }
+}
+
 // TODO: replace with [`core::arch::x86::_MM_SHUFFLE`](https://doc.rust-lang.org/core/arch/x86/fn._MM_SHUFFLE.html)
 // when it stabilizes
 #[cfg(any(target_feature = "sse2", target_feature = "avx2", target_feature = "avx512f"))]
@@ -807,8 +835,19 @@ pub fn xxh3_64_with_seed(input: &[u8], seed: u64) -> u64 {
 
 #[inline]
 ///Returns 64bit hash for provided input using custom secret.
+///
+///This function panics if `secret` doesn't fit minimum required secret size.
+///
+///Prefer to use [SecretInput] with [xxh3_64_with_secret_input] to avoid assert
 pub fn xxh3_64_with_secret(input: &[u8], secret: &[u8]) -> u64 {
+    assert!(secret.len() >= SECRET_SIZE_MIN);
     xxh3_64_internal(input, 0, secret, xxh3_64_long_with_secret)
+}
+
+#[inline]
+///Returns 64bit hash for provided input using custom secret.
+pub fn xxh3_64_with_secret_input(input: &[u8], secret: &SecretInput<impl AsRef<[u8]>>) -> u64 {
+    xxh3_64_internal(input, 0, secret.0.as_ref(), xxh3_64_long_with_secret)
 }
 
 const INTERNAL_BUFFER_SIZE: usize = 256;
@@ -1580,6 +1619,17 @@ pub fn xxh3_128_with_seed(input: &[u8], seed: u64) -> u128 {
 
 #[inline]
 ///Returns 128 hash for provided input using custom secret.
+///
+///This function panics if `secret` doesn't fit minimum required secret size.
+///
+///Prefer to use [SecretInput] with [xxh3_128_with_secret_input] to avoid assert
 pub fn xxh3_128_with_secret(input: &[u8], secret: &[u8]) -> u128 {
+    assert!(secret.len() >= SECRET_SIZE_MIN);
     xxh3_128_internal(input, 0, secret, xxh3_128_long_with_secret)
+}
+
+#[inline]
+///Returns 128 hash for provided input using custom secret.
+pub fn xxh3_128_with_secret_input(input: &[u8], secret: &SecretInput<impl AsRef<[u8]>>) -> u128 {
+    xxh3_128_internal(input, 0, secret.0.as_ref(), xxh3_128_long_with_secret)
 }
