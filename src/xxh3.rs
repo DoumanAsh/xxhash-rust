@@ -1046,6 +1046,7 @@ impl Xxh3Default {
         ((high as u128) << 64) | (low as u128)
     }
 
+    #[inline]
     ///Computes hash.
     pub fn digest(&self) -> u64 {
         //Separating digest mid sized allows us to inline this function, which benefits
@@ -1057,6 +1058,7 @@ impl Xxh3Default {
         }
     }
 
+    #[inline]
     ///Computes hash as 128bit integer.
     pub fn digest128(&self) -> u128 {
         //Separating digest mid sized allows us to inline this function, which benefits
@@ -1205,6 +1207,7 @@ impl Xxh3 {
         ((high as u128) << 64) | (low as u128)
     }
 
+    #[inline]
     ///Computes hash.
     pub fn digest(&self) -> u64 {
         //Separating digest mid sized allows us to inline this function, which benefits
@@ -1220,6 +1223,7 @@ impl Xxh3 {
         }
     }
 
+    #[inline]
     ///Computes hash as 128bit integer.
     pub fn digest128(&self) -> u128 {
         //Separating digest mid sized allows us to inline this function, which benefits
