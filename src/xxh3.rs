@@ -1272,8 +1272,8 @@ impl std::io::Write for Xxh3 {
 #[derive(Clone, Copy)]
 ///Hash builder for `Xxh3`
 pub struct Xxh3Builder {
-    seed: u64,
-    secret: [u8; DEFAULT_SECRET_SIZE],
+    seed: Option<u64>,
+    secret: Option<[u8; DEFAULT_SECRET_SIZE]>,
 }
 
 impl Xxh3Builder {
@@ -1281,8 +1281,8 @@ impl Xxh3Builder {
     ///Creates new instance with default params.
     pub const fn new() -> Self {
         Self {
-            seed: 0,
-            secret: DEFAULT_SECRET,
+            seed: None,
+            secret: None,
         }
     }
 
@@ -1293,22 +1293,35 @@ impl Xxh3Builder {
     ///
     ///To counter it, override secret using [Xxh3Builder::with_secret]
     pub const fn with_seed(mut self, seed: u64) -> Self {
-        self.seed = seed;
-        self.secret = const_custom_default_secret(seed);
+        self.seed = Some(seed);
         self
     }
 
     #[inline(always)]
     ///Sets custom `secret` for `xxh3` algorithm
     pub const fn with_secret(mut self, secret: [u8; DEFAULT_SECRET_SIZE]) -> Self {
-        self.secret = secret;
+        self.secret = Some(secret);
         self
     }
 
     #[inline(always)]
     ///Creates `Xxh3` instance
     pub const fn build(self) -> Xxh3 {
-        Xxh3::with_custom_ops(self.seed, self.secret)
+        let (seed, secret) = match self.seed {
+            Some(seed) => match self.secret {
+                //Use user's secret
+                Some(secret) => (seed, secret),
+                //Derive secret from seed
+                None => (seed, const_custom_default_secret(seed)),
+            },
+            None => match self.secret {
+                //Use user's secret
+                Some(secret) => (0, secret),
+                //Default hasher config
+                None => (0, DEFAULT_SECRET)
+            }
+        };
+        Xxh3::with_custom_ops(seed, secret)
     }
 }
 
