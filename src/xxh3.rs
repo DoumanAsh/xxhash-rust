@@ -1307,20 +1307,12 @@ impl Xxh3Builder {
     #[inline(always)]
     ///Creates `Xxh3` instance
     pub const fn build(self) -> Xxh3 {
-        let (seed, secret) = match self.seed {
-            Some(seed) => match self.secret {
-                //Use user's secret
-                Some(secret) => (seed, secret),
-                //Derive secret from seed
-                None => (seed, const_custom_default_secret(seed)),
-            },
-            None => match self.secret {
-                //Use user's secret
-                Some(secret) => (0, secret),
-                //Default hasher config
-                None => (0, DEFAULT_SECRET)
-            }
-        };
+        let (seed, secret) = match (self.seed, self.secret) {
+            (Some(seed), Some(secret)) => (seed, secret),
+            (Some(seed), None) => (seed, const_custom_default_secret(seed)),
+            (None, Some(secret)) => (0, secret),
+            (None, None) => (0, DEFAULT_SECRET),
+            };
         Xxh3::with_custom_ops(seed, secret)
     }
 }
