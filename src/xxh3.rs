@@ -1312,7 +1312,7 @@ impl Xxh3Builder {
             (Some(seed), None) => (seed, const_custom_default_secret(seed)),
             (None, Some(secret)) => (0, secret),
             (None, None) => (0, DEFAULT_SECRET),
-            };
+        };
         Xxh3::with_custom_ops(seed, secret)
     }
 }
